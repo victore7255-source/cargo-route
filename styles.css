@@ -175,6 +175,16 @@ h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; color: var(--in
 .textarea { resize: vertical; min-height: 76px; }
 select.input { appearance: none; }
 
+/* iOS가 시간 입력칸을 자체 크기로 그려 select와 높이가 어긋나는 것 방지 */
+input[type="time"].input, select.input {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 47px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
+
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .field-label { font-size: 12px; color: var(--ink-dim); font-weight: 700; letter-spacing: -0.01em; }
 
