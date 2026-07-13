@@ -59,6 +59,13 @@
     </div>
 
     <div class="card">
+      <h2 class="card-title">💬 문자 붙여넣기 <span class="hint">(화주·포워딩 문자 자동 인식)</span></h2>
+      <textarea id="sms-input" class="input textarea" rows="4" placeholder="받은 배차 문자를 통째로 붙여넣으세요.&#10;상차지·하차지 주소, 담당자 연락처, 화물 정보,&#10;인수증 사진 보낼 번호를 자동으로 찾아냅니다."></textarea>
+      <button class="btn secondary full top8" id="btn-parse-sms">🔍 문자에서 배송지 찾기</button>
+      <div id="sms-preview" class="hidden"></div>
+    </div>
+
+    <div class="card">
       <h2 class="card-title">🎯 배송지 <span class="hint">(한 줄에 하나씩 여러 개 붙여넣기 가능)</span></h2>
       <textarea id="stops-input" class="input textarea" rows="3" placeholder="예)&#10;서울 강남구 테헤란로 123&#10;성남시 분당구 판교역로 235&#10;수원시 영통구"></textarea>
       <div class="row gap top8">
@@ -254,6 +261,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="geo.js"></script>
+<script src="sms.js"></script>
 <script src="route.js"></script>
 <script src="app.js"></script>
 </body>

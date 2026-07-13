@@ -141,7 +141,11 @@ async function addStopsFromInput() {
   }));
   state.stops.push(...pending);
   renderStops();
+  await geocodePending(pending);
+}
 
+/** 추가된 배송지들의 주소를 순서대로 좌표로 바꾼다 (문자 붙여넣기와 직접 입력이 공용) */
+async function geocodePending(pending) {
   for (let i = 0; i < pending.length; i++) {
     const stop = pending[i];
     setOptStatus(`🔍 주소 확인 중… (${i + 1}/${pending.length}) ${stop.label}`);
@@ -159,6 +163,81 @@ async function addStopsFromInput() {
   saveState();
 }
 
+// ─────────── 문자 붙여넣기 ───────────
+let smsParsed = [];
+
+$('#btn-parse-sms').addEventListener('click', () => {
+  const text = $('#sms-input').value.trim();
+  if (!text) { toast('받은 문자를 붙여넣어 주세요'); return; }
+  smsParsed = SmsParser.parse(text);
+  if (!smsParsed.length) {
+    $('#sms-preview').classList.add('hidden');
+    toast('주소를 찾지 못했습니다. 문자에 "시/구/로" 형태의 주소가 있는지 확인해 주세요.');
+    return;
+  }
+  renderSmsPreview();
+});
+
+function renderSmsPreview() {
+  const box = $('#sms-preview');
+  if (!smsParsed.length) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<ul class="stop-list top8">'
+    + smsParsed.map((s, i) => {
+      const sub = [
+        s.contactName,
+        s.phone ? '📞 ' + s.phone : '',
+        s.cargo ? '📦 ' + s.cargo : '',
+        s.podPhone ? '📸 인수증 → ' + s.podPhone : '',
+      ].filter(Boolean).map(esc).join(' · ');
+      return `
+      <li class="stop-item">
+        <span>💬</span>
+        <span class="label">${esc(s.address)}<span class="sub">${sub || '추출된 부가정보 없음'}</span></span>
+        <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-sms-type="${i}" title="눌러서 상차/하차 전환">${s.type}</button>
+        <button class="icon-btn" data-sms-del="${i}" title="제외">✕</button>
+      </li>`;
+    }).join('')
+    + '</ul>'
+    + `<p class="fine-print">내용을 확인하고, 상차/하차가 잘못됐으면 배지를 눌러 바꿔주세요.</p>`
+    + `<button class="btn primary full top8" id="btn-add-sms">＋ 위 ${smsParsed.length}곳을 배송지에 추가</button>`;
+
+  box.querySelectorAll('[data-sms-type]').forEach(b => b.addEventListener('click', () => {
+    const s = smsParsed[+b.dataset.smsType];
+    s.type = s.type === '하차' ? '상차' : '하차';
+    renderSmsPreview();
+  }));
+  box.querySelectorAll('[data-sms-del]').forEach(b => b.addEventListener('click', () => {
+    smsParsed.splice(+b.dataset.smsDel, 1);
+    renderSmsPreview();
+  }));
+  $('#btn-add-sms').addEventListener('click', addSmsStops);
+}
+
+async function addSmsStops() {
+  const defaultWork = parseInt($('#default-work').value, 10);
+  const pending = smsParsed.map(p => ({
+    id: uid(), label: p.address, lat: null, lng: null,
+    type: p.type, workMin: defaultWork, status: 'pending',
+    phone: p.phone || '', contactName: p.contactName || '',
+    cargo: p.cargo || '', podPhone: p.podPhone || '',
+  }));
+  smsParsed = [];
+  $('#sms-input').value = '';
+  $('#sms-preview').classList.add('hidden');
+  state.stops.push(...pending);
+  renderStops();
+  await geocodePending(pending);
+}
+
+function telLink(phone) { return 'tel:' + String(phone).replace(/[^0-9+]/g, ''); }
+function smsLink(phone, body) {
+  const n = String(phone).replace(/[^0-9+]/g, '');
+  // iOS는 sms:번호&body=, 안드로이드는 sms:번호?body= 형식을 쓴다
+  const sep = /iPhone|iPad|iPod/i.test(navigator.userAgent) ? '&' : '?';
+  return `sms:${n}${sep}body=${encodeURIComponent(body)}`;
+}
+
 function renderStops() {
   const ul = $('#stop-list');
   ul.innerHTML = '';
@@ -166,10 +245,16 @@ function renderStops() {
     const li = document.createElement('li');
     li.className = 'stop-item' + (s.status === 'error' ? ' error' : '');
     const statusIcon = s.status === 'pending' ? '⏳' : s.status === 'error' ? '⚠️' : '📍';
+    const info = [
+      s.contactName,
+      s.phone ? '📞 ' + s.phone : '',
+      s.cargo ? '📦 ' + s.cargo : '',
+      s.podPhone ? '📸 인수증 → ' + s.podPhone : '',
+    ].filter(Boolean).map(esc).join(' · ');
     li.innerHTML = `
       <span>${statusIcon}</span>
       <span class="label">${esc(s.label)}
-        <span class="sub">${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(s.display || '')}</span>
+        <span class="sub">${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(s.display || '')}${info ? '<br>' + info : ''}</span>
       </span>
       <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-act="type" data-i="${i}">${s.type}</button>
       <button class="icon-btn" data-act="del" data-i="${i}" title="삭제">✕</button>`;
@@ -322,6 +407,7 @@ function renderResult() {
       <div class="visit-body">
         <div class="visit-name">${esc(stop.label)} <span class="badge ${stop.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${stop.type}</span></div>
         <div class="visit-meta">도착 ${fmtTime(new Date(sch.arrive))} · 작업 ${stop.workMin}분 · 출발 ${fmtTime(new Date(sch.depart))}</div>
+        ${stop.cargo || stop.phone ? `<div class="visit-meta">${[stop.cargo ? '📦 ' + stop.cargo : '', stop.phone ? '📞 ' + (stop.contactName ? stop.contactName + ' ' : '') + stop.phone : ''].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
         <div class="visit-leg">↳ 이동 ${fmtKm(sch.legDistance)} · ${fmtDur(sch.legDuration)}</div>
       </div>`;
     ol.appendChild(li);
@@ -463,7 +549,7 @@ $('#btn-copy-order').addEventListener('click', () => {
   res.order.forEach((stopIdx, i) => {
     const s = state.stops[stopIdx];
     const sch = res.schedule[i];
-    lines.push(`${i + 1}. [${s.type}] ${s.label} — 도착 ${fmtTime(new Date(sch.arrive))}`);
+    lines.push(`${i + 1}. [${s.type}] ${s.label}${s.phone ? ` (담당 ${s.contactName ? s.contactName + ' ' : ''}${s.phone})` : ''} — 도착 ${fmtTime(new Date(sch.arrive))}`);
   });
   lines.push(`총거리 ${fmtKm(res.distance)} · 운전 ${fmtDur(res.duration)} · 통행료 약 ${fmtWon(res.toll)}`);
   navigator.clipboard.writeText(lines.join('\n'))
@@ -524,9 +610,17 @@ function renderDriveChecklist() {
   if (next) {
     const idx = stops.indexOf(next);
     $('#next-stop-card').classList.remove('hidden');
+    const arriveMsg = `안녕하세요, 화물 기사입니다. ${next.type === '상차' ? '상차' : '배송'} 건으로 곧 도착 예정입니다.`;
+    const contactHtml = next.phone ? `
+      <div class="row gap" style="margin-bottom:8px">
+        <a class="mini-btn" href="${telLink(next.phone)}">📞 ${esc(next.contactName || '담당자')} 전화</a>
+        <a class="mini-btn" href="${smsLink(next.phone, arriveMsg)}">✉️ 곧 도착 문자</a>
+      </div>` : '';
     $('#next-stop-info').innerHTML = `
       <div class="visit-name" style="font-size:17px;margin-bottom:8px">${idx + 1}. ${esc(next.label)}
-        <span class="badge ${next.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${next.type}</span></div>`;
+        <span class="badge ${next.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${next.type}</span></div>
+      ${next.cargo ? `<div class="visit-meta" style="margin-bottom:8px">📦 ${esc(next.cargo)}</div>` : ''}
+      ${contactHtml}`;
     $('#drive-navi').innerHTML = naviButtonsHtml(next);
   } else {
     $('#next-stop-card').classList.add('hidden');
@@ -552,13 +646,20 @@ function renderDriveChecklist() {
       <div class="visit-actions">
         ${!ev.arrivedAt ? `<button class="mini-btn" data-act="arrive" data-id="${s.id}">📍 도착</button>` : ''}
         ${ev.arrivedAt && !ev.doneAt ? `<button class="mini-btn" data-act="done" data-id="${s.id}">✅ ${s.type} 완료</button>` : ''}
+        ${s.phone ? `<a class="mini-btn" href="${telLink(s.phone)}" title="${esc(s.contactName || '담당자')} 전화">📞</a>` : ''}
+        ${ev.doneAt && s.podPhone ? `<a class="mini-btn" href="${smsLink(s.podPhone, '안녕하세요, 화물 기사입니다. 인수증 사진 보내드립니다. (사진을 첨부해 주세요)')}">📸 인수증 전송</a>` : ''}
       </div>`;
     ul.appendChild(li);
   });
   ul.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
     const ev = state.trip.events[b.dataset.id] || (state.trip.events[b.dataset.id] = {});
     if (b.dataset.act === 'arrive') ev.arrivedAt = Date.now();
-    if (b.dataset.act === 'done') { if (!ev.arrivedAt) ev.arrivedAt = Date.now(); ev.doneAt = Date.now(); }
+    if (b.dataset.act === 'done') {
+      if (!ev.arrivedAt) ev.arrivedAt = Date.now();
+      ev.doneAt = Date.now();
+      const s = state.trip.snapshot.stops.find(x => x.id === b.dataset.id);
+      if (s && s.podPhone) toast(`📸 인수증 싸인 사진을 ${s.podPhone} 로 보내주세요 — 아래 [인수증 전송] 버튼을 누르세요`, 5000);
+    }
     saveState();
     renderDriveChecklist();
   }));
@@ -888,8 +989,8 @@ function seedDemo() {
   state._demo = true;
   state.origin = { label: '서울 강서구 마곡동', lat: 37.5609, lng: 126.8259 };
   state.stops = [
-    { id: 'demo1', label: '서울 강남구 테헤란로 123', lat: 37.5006, lng: 127.0364, type: '상차', workMin: 20, status: 'ok', display: '서울특별시 강남구 역삼동' },
-    { id: 'demo2', label: '성남시 분당구 판교역로 235', lat: 37.3947, lng: 127.1114, type: '하차', workMin: 20, status: 'ok', display: '경기도 성남시 분당구 삼평동' },
+    { id: 'demo1', label: '서울 강남구 테헤란로 123', lat: 37.5006, lng: 127.0364, type: '상차', workMin: 20, status: 'ok', display: '서울특별시 강남구 역삼동', contactName: '김철수', phone: '010-1234-5678', cargo: '파레트 5개 / 2.5톤' },
+    { id: 'demo2', label: '성남시 분당구 판교역로 235', lat: 37.3947, lng: 127.1114, type: '하차', workMin: 20, status: 'ok', display: '경기도 성남시 분당구 삼평동', contactName: '박영희', phone: '010-9876-5432', podPhone: '010-1111-2222' },
     { id: 'demo3', label: '수원시 영통구', lat: 37.2749, lng: 127.0468, type: '하차', workMin: 30, status: 'ok', display: '경기도 수원시 영통구' },
   ];
   const legs = [
