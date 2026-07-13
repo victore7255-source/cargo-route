@@ -1,0 +1,12 @@
+{
+  "name": "화물 혼적 경로 — AI 화물 운행 비서",
+  "short_name": "화물혼적경로",
+  "description": "여러 배송지의 방문 순서를 AI가 자동 최적화하는 화물기사 전용 운행 비서",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f1522",
+  "theme_color": "#0f1522",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
