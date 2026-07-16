@@ -439,3 +439,10 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   margin-top: 8px; padding: 8px 12px; border-radius: 10px;
   background: var(--brand-soft); font-size: 12.5px; line-height: 1.55;
 }
+
+/* ── 적재함 배치도 ── */
+.cargo-diagram { margin-top: 12px; }
+.cargo-diagram svg { width: 100%; height: auto; display: block; }
+.diagram-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12px; color: var(--ink-dim); }
+.diagram-key { display: inline-flex; align-items: center; gap: 5px; }
+.diagram-key i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }

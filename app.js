@@ -1195,12 +1195,67 @@ function placeItem(item, TW, TH) {
     if (across < 1 || layers < 1) continue;
     const cols = Math.ceil(count / (across * layers));
     const usedLen = cols * y;
-    if (!best || usedLen < best.usedLen) best = { across, layers, cols, usedLen };
+    if (!best || usedLen < best.usedLen) best = { across, layers, cols, usedLen, x, y };
   }
   if (!best) {
     return { fit: false, reason: h > TH ? `높이 ${h}cm가 적재함 높이 ${TH}cm를 넘습니다` : `가로·세로(${w}×${d}cm)가 적재함 폭 ${TW}cm를 넘습니다` };
   }
   return { fit: true, ...best, wastedH: TH - best.layers * h };
+}
+
+/**
+ * 적재함을 위에서 내려다본 배치도 SVG.
+ * 좌표 단위 = cm. 바닥 칸 하나 = 짐 한 무더기(스택), 연한 칸은 위 단이 덜 찬 자리.
+ */
+function cargoDiagramSvg(results, TL, TW) {
+  const fits = results.filter(r => r.place.fit && r.place.x);
+  if (!fits.length) return '';
+  const COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#10b981', '#ec4899', '#84cc16'];
+  const CAB = 36, PAD = 4;
+  const W = CAB + TL + PAD * 2, H = TW + PAD * 2;
+  let svg = `<rect x="${CAB}" y="${PAD}" width="${TL}" height="${TW}" rx="4" fill="var(--card-sub)" stroke="var(--line)" stroke-width="1.5"/>`;
+  // 운전석(앞) 표시
+  svg += `<rect x="${PAD}" y="${PAD + TW * 0.15}" width="${CAB - 12}" height="${TW * 0.7}" rx="8" fill="var(--brand-soft)" stroke="var(--line)"/>`
+    + `<text x="${PAD + (CAB - 12) / 2}" y="${PAD + TW / 2}" text-anchor="middle" dominant-baseline="central" font-size="13" fill="var(--brand)">앞</text>`;
+
+  let cursor = CAB;              // 적재함 앞쪽부터 채워 나간다
+  let overflow = false;
+  const legend = [];
+  fits.forEach((r, idx) => {
+    const p = r.place, it = r.it;
+    const color = COLORS[idx % COLORS.length];
+    legend.push({ color, label: `${itemLabel(it)} — ${p.layers}단` });
+    let remaining = it.count;
+    for (let j = 0; j < p.cols; j++) {
+      if (cursor + p.y > CAB + TL + 0.5) { overflow = true; break; }
+      for (let k = 0; k < p.across && remaining > 0; k++) {
+        const stackH = Math.min(p.layers, remaining);
+        remaining -= stackH;
+        svg += `<rect x="${(cursor + 0.8).toFixed(1)}" y="${(PAD + k * p.x + 0.8).toFixed(1)}" width="${(p.y - 1.6).toFixed(1)}" height="${(p.x - 1.6).toFixed(1)}" rx="2" fill="${color}" fill-opacity="${stackH === p.layers ? 0.85 : 0.4}" stroke="${color}" stroke-width="1"/>`;
+      }
+      cursor += p.y;
+    }
+  });
+
+  const freeLen = CAB + TL - cursor;
+  if (!overflow && freeLen > 8) {
+    svg += `<rect x="${cursor + 2}" y="${PAD + 2}" width="${freeLen - 4}" height="${TW - 4}" rx="4" fill="none" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="6 5"/>`;
+    const cx = cursor + freeLen / 2;
+    svg += freeLen > 60
+      ? `<text x="${cx}" y="${PAD + TW / 2 - 9}" text-anchor="middle" dominant-baseline="central" font-size="15" font-weight="700" fill="var(--green)">남는 공간<tspan x="${cx}" dy="19">${Math.round(freeLen)}cm</tspan></text>`
+      : `<text x="${cx}" y="${PAD + TW / 2}" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="700" fill="var(--green)">${Math.round(freeLen)}</text>`;
+  }
+  if (overflow) {
+    svg += `<text x="${CAB + TL - 5}" y="${PAD + TW / 2}" text-anchor="end" dominant-baseline="central" font-size="14" font-weight="700" fill="var(--red)">⚠️ 초과</text>`;
+  }
+
+  const legendHtml = legend.map(l =>
+    `<span class="diagram-key"><i style="background:${l.color}"></i>${esc(l.label)}</span>`).join('')
+    + (fits.some(r => r.place.layers > 1) ? '<span class="diagram-key hint">연한 칸 = 위 단이 덜 찬 자리</span>' : '');
+  return `<div class="cargo-diagram">
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="적재함 배치도">${svg}</svg>
+    <div class="diagram-legend">${legendHtml}</div>
+  </div>`;
 }
 
 $('#btn-calc-cargo').addEventListener('click', () => {
@@ -1242,6 +1297,7 @@ $('#btn-calc-cargo').addEventListener('click', () => {
 
   $('#cargo-output').innerHTML = verdict
     + `<div class="gauge"><div style="width:${Math.min(100, lenRate)}%"></div></div>`
+    + cargoDiagramSvg(results, TL, TW)
     + '<table class="result-table">' + rows.map(r => `<tr><td>${esc(r[0])}</td><td>${r[1]}</td></tr>`).join('') + '</table>'
     + `<p class="fine-print top8">💡 화물별로 구간을 나눠 싣는 기준의 근사 계산입니다. 하차 순서가 늦은 짐부터 안쪽에 실으세요. 파레트 위에 박스를 겹쳐 실을 수 있으면 실제로는 더 여유가 생깁니다.</p>`;
   $('#cargo-result').classList.remove('hidden');
