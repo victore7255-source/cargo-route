@@ -189,6 +189,7 @@ async function addStopsFromInput() {
   if (pending.some(isFutureStop)) {
     toast(`📅 ${manualSched} — 하차일(${fmtDateK(dates.unload)})이 내일 이후라 오늘 경로에서 제외됩니다`, 4500);
   }
+  resetSchedPicker();
   state.stops.push(...pending);
   renderStops();
   await geocodePending(pending);
@@ -225,6 +226,13 @@ $$('#sched-picker [data-sched]').forEach(b => b.addEventListener('click', () => 
   $$('#sched-picker [data-sched]').forEach(x => x.classList.toggle('active', x === b));
   if (manualSched) toast(`📅 ${manualSched} — 문자에 일정 표기가 없으면 이 일정으로 적용합니다`);
 }));
+
+/** 배송지 추가가 끝나면 일정 선택을 '자동 인식'으로 되돌린다 (다음 배차에 잘못 적용 방지) */
+function resetSchedPicker() {
+  if (!manualSched) return;
+  manualSched = '';
+  $$('#sched-picker [data-sched]').forEach(x => x.classList.toggle('active', x.dataset.sched === ''));
+}
 
 $('#btn-parse-sms').addEventListener('click', () => {
   const text = $('#sms-input').value.trim();
@@ -320,6 +328,7 @@ async function addSmsStops() {
   smsMeta = { schedule: null, items: [] };
   $('#sms-input').value = '';
   $('#sms-preview').classList.add('hidden');
+  resetSchedPicker();
   state.stops.push(...pending);
   renderStops();
   await geocodePending(pending);

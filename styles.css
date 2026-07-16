@@ -407,6 +407,7 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   padding: 12px 22px; border-radius: 999px;
   font-size: 14px; font-weight: 700; letter-spacing: -0.01em;
   z-index: 1000;
+  pointer-events: none; /* 토스트가 아래 버튼 터치를 막지 않도록 */
   box-shadow: 0 8px 28px rgba(0, 0, 0, .3);
   max-width: 90vw; text-align: center;
   animation: rise .25s ease both;
