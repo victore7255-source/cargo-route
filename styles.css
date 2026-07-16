@@ -447,3 +447,5 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 .diagram-key { display: inline-flex; align-items: center; gap: 5px; }
 .diagram-key i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
 .diagram-cap { font-size: 12px; font-weight: 700; color: var(--ink-dim); margin: 12px 0 4px; }
+.stop-divider { padding: 10px 4px 4px; font-size: 12px; font-weight: 700; color: var(--ink-dim); border-top: 1px dashed var(--line); margin-top: 8px; list-style: none; }
+.stop-item.future { opacity: .72; }

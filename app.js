@@ -30,6 +30,50 @@ function esc(s) {
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
+// ─────────── 방문 날짜 (당상내착 등 일정 → 실제 날짜) ───────────
+function isoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function fmtDateK(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const day = '일월화수목금토'[new Date(y, m - 1, d).getDay()];
+  return `${m}/${d}(${day})`;
+}
+function nextMonday() {
+  const d = new Date();
+  d.setDate(d.getDate() + (((8 - d.getDay()) % 7) || 7));
+  return d;
+}
+/** 일정 라벨 → 상차일/하차일(ISO). confirm=true면 날짜 확인이 필요한 추정치(월상 등) */
+function scheduleDates(label) {
+  if (!label) return { load: null, unload: null };
+  const plus = n => { const d = new Date(); d.setDate(d.getDate() + n); return isoDate(d); };
+  const mon = isoDate(nextMonday());
+  switch (label) {
+    case '당상당착': return { load: plus(0), unload: plus(0) };
+    case '당상내착': return { load: plus(0), unload: plus(1) };
+    case '내상내착': case '내상': return { load: plus(1), unload: plus(1) };
+    case '내착': return { load: plus(0), unload: plus(1) };
+    case '당착': case '당상': return { load: plus(0), unload: plus(0) };
+    case '당상월착': return { load: plus(0), unload: mon, confirm: true };
+    case '월상월착': case '월상': return { load: mon, unload: mon, confirm: true };
+  }
+  // "7/21 상차" 형태
+  const m = label.match(/^(\d{1,2})\/(\d{1,2})\s*(상차|하차)$/);
+  if (m) {
+    const d = new Date();
+    d.setMonth(+m[1] - 1, +m[2]);
+    if (isoDate(d) < isoDate(new Date())) d.setFullYear(d.getFullYear() + 1);
+    const iso = isoDate(d);
+    return m[3] === '상차' ? { load: iso, unload: iso } : { load: null, unload: iso };
+  }
+  return { load: null, unload: null };
+}
+/** 오늘보다 뒤 날짜에 방문하는 지점인가 (오늘 경로에서 제외) */
+function isFutureStop(s) {
+  return !!(s.visitDate && s.visitDate > isoDate(new Date()));
+}
+
 // ─────────── 상태 ───────────
 const STATE_KEY = 'cargo-app-state-v1';
 const HISTORY_KEY = 'cargo-history-v1';
@@ -237,13 +281,20 @@ function renderSmsPreview() {
 async function addSmsStops() {
   const defaultWork = parseInt($('#default-work').value, 10);
   const schedLabel = smsMeta.schedule ? smsMeta.schedule.label : '';
+  const dates = scheduleDates(schedLabel);
   const pending = smsParsed.map(p => ({
     id: uid(), label: p.address, lat: null, lng: null,
     type: p.type, workMin: defaultWork, status: 'pending',
     phone: p.phone || '', contactName: p.contactName || '',
     cargo: p.cargo || '', podPhone: p.podPhone || '',
     notes: p.notes || [], schedule: schedLabel,
+    visitDate: p.type === '상차' ? dates.load : dates.unload,
   }));
+  if (dates.confirm) {
+    toast(`📅 "${schedLabel}" 일정 — 월요일(${fmtDateK(isoDate(nextMonday()))})로 잡았습니다. 지정일이 다르면 날짜 배지를 눌러 수정하세요.`, 5000);
+  } else if (pending.some(isFutureStop)) {
+    toast(`📅 ${schedLabel} — 내일 이후 방문 지점은 오늘 경로에서 자동 제외됩니다`, 4500);
+  }
   if (smsMeta.items.length) {
     addCargoItems(smsMeta.items, pending[0] ? pending[0].label : '');
   }
@@ -267,12 +318,16 @@ function smsLink(phone, body) {
 function renderStops() {
   const ul = $('#stop-list');
   ul.innerHTML = '';
-  state.stops.forEach((s, i) => {
+  const today = state.stops.map((s, i) => ({ s, i })).filter(x => !isFutureStop(x.s));
+  const future = state.stops.map((s, i) => ({ s, i })).filter(x => isFutureStop(x.s));
+
+  const makeLi = ({ s, i }, isFuture) => {
     const li = document.createElement('li');
-    li.className = 'stop-item' + (s.status === 'error' ? ' error' : '');
-    const statusIcon = s.status === 'pending' ? '⏳' : s.status === 'error' ? '⚠️' : '📍';
+    li.dataset.i = i;
+    li.className = 'stop-item' + (s.status === 'error' ? ' error' : '') + (isFuture ? ' future' : '');
+    const statusIcon = s.status === 'pending' ? '⏳' : s.status === 'error' ? '⚠️' : isFuture ? '📅' : '📍';
     const info = [
-      s.schedule ? '📅 ' + s.schedule : '',
+      s.schedule && !s.visitDate ? '📅 ' + s.schedule : '',
       s.contactName,
       s.phone ? '📞 ' + s.phone : '',
       s.cargo ? '📦 ' + s.cargo : '',
@@ -280,15 +335,44 @@ function renderStops() {
     ].filter(Boolean).map(esc).join(' · ');
     const notes = (s.notes && s.notes.length)
       ? `<br>⚠️ <span class="note">${s.notes.map(esc).join(' / ')}</span>` : '';
+    const dateBadge = s.visitDate
+      ? `<button class="badge sched" data-act="date" data-i="${i}" title="눌러서 방문 날짜 변경">📅 ${fmtDateK(s.visitDate)}</button>` : '';
     li.innerHTML = `
       <span>${statusIcon}</span>
       <span class="label">${esc(s.label)}
         <span class="sub">${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(s.display || '')}${info ? '<br>' + info : ''}${notes}</span>
       </span>
+      ${dateBadge}
       <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-act="type" data-i="${i}">${s.type}</button>
       <button class="icon-btn" data-act="del" data-i="${i}" title="삭제">✕</button>`;
-    ul.appendChild(li);
-  });
+    return li;
+  };
+
+  today.forEach(x => ul.appendChild(makeLi(x, false)));
+  if (future.length) {
+    const div = document.createElement('li');
+    div.className = 'stop-divider';
+    div.textContent = `📅 예정 방문 ${future.length}곳 — 오늘 경로에서 제외됩니다 (날짜가 되면 자동 포함)`;
+    ul.appendChild(div);
+    future.forEach(x => ul.appendChild(makeLi(x, true)));
+  }
+
+  ul.querySelectorAll('[data-act="date"]').forEach(b => b.addEventListener('click', () => {
+    const s = state.stops[+b.dataset.i];
+    const input = prompt('방문 날짜를 입력하세요.\n예) 2026-07-21 또는 7/21 — 오늘 경로에 넣으려면 "오늘"', s.visitDate || '');
+    if (input == null) return;
+    const t = input.trim();
+    if (t === '오늘' || t === '') s.visitDate = null;
+    else {
+      let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/) || t.match(/^(\d{1,2})[\/.](\d{1,2})$/);
+      if (!m) { toast('날짜 형식을 확인해 주세요 (예: 7/21)'); return; }
+      const d = m.length === 4
+        ? new Date(+m[1], +m[2] - 1, +m[3])
+        : (() => { const x = new Date(); x.setMonth(+m[1] - 1, +m[2]); if (isoDate(x) < isoDate(new Date())) x.setFullYear(x.getFullYear() + 1); return x; })();
+      s.visitDate = isoDate(d);
+    }
+    renderStops(); saveState();
+  }));
   ul.querySelectorAll('[data-act="type"]').forEach(b => b.addEventListener('click', () => {
     const s = state.stops[+b.dataset.i];
     s.type = s.type === '하차' ? '상차' : '하차';
@@ -298,11 +382,11 @@ function renderStops() {
     state.stops.splice(+b.dataset.i, 1);
     renderStops(); saveState();
   }));
-  ul.querySelectorAll('.stop-item.error .label').forEach((el, idx) => {
+  ul.querySelectorAll('.stop-item.error').forEach(li => {
+    const el = li.querySelector('.label');
     el.style.cursor = 'pointer';
     el.addEventListener('click', async () => {
-      const errStops = state.stops.filter(s => s.status === 'error');
-      const stop = errStops[idx];
+      const stop = state.stops[+li.dataset.i];
       const fixed = prompt('주소를 수정해 주세요 (시/구/동 단위 권장)', stop.label);
       if (!fixed) return;
       stop.label = fixed.trim(); stop.status = 'pending';
@@ -320,7 +404,7 @@ function renderFinalDestSelect() {
   const sel = $('#final-dest');
   const prev = sel.value;
   sel.innerHTML = '<option value="">자동 최적화 (지정 안 함)</option>'
-    + state.stops.map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
+    + state.stops.filter(s => !isFutureStop(s)).map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
   if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
 }
 
@@ -334,13 +418,19 @@ function setOptStatus(msg, cls = '') {
 $('#btn-optimize').addEventListener('click', async () => {
   await geocodeOrigin();
   if (!state.origin) { toast('먼저 출발지를 입력하거나 📡 현재위치를 눌러 주세요'); return; }
-  const ready = state.stops.filter(s => s.status === 'ok');
-  if (ready.length < 1) { toast('배송지를 1곳 이상 추가해 주세요'); return; }
-  if (state.stops.some(s => s.status === 'error')) {
+  // 오늘 방문할 지점만 경로에 넣는다 (당상내착 하차지 등 예정 지점은 제외)
+  const todayStops = state.stops.filter(s => !isFutureStop(s));
+  const futureCount = state.stops.length - todayStops.length;
+  const ready = todayStops.filter(s => s.status === 'ok');
+  if (ready.length < 1) {
+    toast(futureCount ? '오늘 방문할 배송지가 없습니다 (예정 배송지만 있음)' : '배송지를 1곳 이상 추가해 주세요');
+    return;
+  }
+  if (todayStops.some(s => s.status === 'error')) {
     toast('⚠️ 주소를 찾지 못한 배송지가 있습니다. 수정하거나 삭제해 주세요.');
     return;
   }
-  if (state.stops.some(s => s.status === 'pending')) {
+  if (todayStops.some(s => s.status === 'pending')) {
     toast('주소 확인이 끝날 때까지 잠시 기다려 주세요');
     return;
   }
@@ -351,8 +441,11 @@ $('#btn-optimize').addEventListener('click', async () => {
 
   try {
     const finalId = $('#final-dest').value;
-    const finalIdx = finalId ? state.stops.findIndex(s => s.id === finalId) : null;
-    const res = await Router.optimize(state.origin, state.stops, finalIdx);
+    const finalTodayIdx = finalId ? todayStops.findIndex(s => s.id === finalId) : null;
+    const resToday = await Router.optimize(state.origin, todayStops,
+      (finalTodayIdx != null && finalTodayIdx >= 0) ? finalTodayIdx : null);
+    // 순서를 전체 stops 배열 기준 인덱스로 되돌린다
+    const res = { ...resToday, order: resToday.order.map(i => state.stops.indexOf(todayStops[i])) };
 
     // 출발 시각 결정
     const timeVal = $('#depart-time').value;
@@ -371,7 +464,10 @@ $('#btn-optimize').addEventListener('click', async () => {
     state.trip = null;
     saveState();
     renderResult();
-    setOptStatus(res.approx ? '⚠️ 경로 서버 연결이 원활하지 않아 직선거리 기반 추정치입니다.' : '');
+    const notice = [];
+    if (res.approx) notice.push('⚠️ 경로 서버 연결이 원활하지 않아 직선거리 기반 추정치입니다.');
+    if (futureCount) notice.push(`📅 예정 배송지 ${futureCount}곳은 오늘 경로에서 제외했습니다.`);
+    setOptStatus(notice.join(' '));
     $('#result-area').classList.remove('hidden');
     $('#result-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
@@ -757,11 +853,13 @@ async function driveAddStops() {
     let specs;
     if (full.stops.length) {
       const schedLabel = full.schedule ? full.schedule.label : '';
+      const dates = scheduleDates(schedLabel);
       specs = full.stops.map(p => ({
         label: p.address, type: p.type,
         phone: p.phone || '', contactName: p.contactName || '',
         cargo: p.cargo || '', podPhone: p.podPhone || '',
         notes: p.notes || [], schedule: schedLabel,
+        visitDate: p.type === '상차' ? dates.load : dates.unload,
       }));
     } else {
       const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
@@ -784,6 +882,19 @@ async function driveAddStops() {
     }
     if (!newStops.length) { st('✗ 추가할 수 있는 주소가 없습니다. 주소를 확인해 주세요.', 'err'); return; }
 
+    // 내일 이후 방문 지점(당상내착 하차지 등)은 오늘 운행 경로에 넣지 않고 예정 목록으로만 보관
+    const todayNew = newStops.filter(s => !isFutureStop(s));
+    const futureNew = newStops.filter(isFutureStop);
+    if (!todayNew.length) {
+      state.stops.push(...newStops.map(s => ({ ...s })));
+      if (full.items && full.items.length) addCargoItems(full.items, newStops[0].label);
+      $('#drive-add-input').value = '';
+      st('');
+      saveState(); renderStops();
+      toast(`📅 ${futureNew.length}곳 모두 내일 이후 방문 — 경로 탭 예정 목록에 담아두었습니다`, 5000);
+      return;
+    }
+
     // 재계산 기준점: GPS 현재 위치 → 실패 시 마지막 완료 지점 → 출발지
     st('📡 현재 위치 확인 중…');
     let cur;
@@ -798,7 +909,7 @@ async function driveAddStops() {
 
     const isDone = s => trip.events[s.id] && trip.events[s.id].doneAt;
     const remaining = trip.snapshot.stops.filter(s => !isDone(s));
-    const all = [...remaining, ...newStops];
+    const all = [...remaining, ...todayNew];
 
     st(`🤖 남은 ${all.length}곳의 경로를 다시 계산하는 중…`);
     const res = await Router.optimize(cur, all, null);
@@ -825,7 +936,8 @@ async function driveAddStops() {
     saveState();
     renderStops();
     renderDriveChecklist();
-    toast(`✅ ${newStops.length}곳 추가 — 남은 경로를 다시 계산했습니다. 새 방문 순서를 확인하세요.`);
+    toast(`✅ ${todayNew.length}곳 추가 — 남은 경로를 다시 계산했습니다.`
+      + (futureNew.length ? ` 내일 이후 ${futureNew.length}곳은 예정 목록에 보관했습니다.` : ''), 5000);
   } catch (e) {
     st('✗ 재계산에 실패했습니다: ' + e.message, 'err');
   } finally {
