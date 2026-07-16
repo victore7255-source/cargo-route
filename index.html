@@ -60,7 +60,7 @@
 
     <div class="card">
       <h2 class="card-title">💬 문자 붙여넣기 <span class="hint">(화주·포워딩 문자 자동 인식)</span></h2>
-      <textarea id="sms-input" class="input textarea" rows="4" placeholder="받은 배차 문자를 통째로 붙여넣으세요.&#10;상차지·하차지 주소, 담당자 연락처, 화물 정보,&#10;인수증 사진 보낼 번호를 자동으로 찾아냅니다."></textarea>
+      <textarea id="sms-input" class="input textarea" rows="4" placeholder="받은 배차 문자를 통째로 붙여넣으세요.&#10;상차지·하차지 주소, 연락처, 화물 치수·수량,&#10;일정(당상내착 등)·특이사항까지 자동으로 찾아냅니다."></textarea>
       <button class="btn secondary full top8" id="btn-parse-sms">🔍 문자에서 배송지 찾기</button>
       <div id="sms-preview" class="hidden"></div>
     </div>
@@ -154,6 +154,13 @@
         <ul class="visit-list" id="drive-checklist"></ul>
       </div>
 
+      <div class="card">
+        <h2 class="card-title">➕ 운행 중 화물 추가 <span class="hint">(새로 잡은 배차)</span></h2>
+        <textarea id="drive-add-input" class="input textarea" rows="3" placeholder="새로 잡은 배차 문자를 통째로 붙여넣거나, 주소를 한 줄에 하나씩 입력하세요.&#10;현재 위치 기준으로 남은 경로를 다시 계산합니다."></textarea>
+        <button class="btn secondary full top8" id="btn-drive-add">🔄 추가하고 남은 경로 다시 계산</button>
+        <div id="drive-add-status" class="geo-status"></div>
+      </div>
+
       <button class="btn danger big" id="btn-end-trip">🏁 운행 종료</button>
     </div>
 
@@ -180,7 +187,7 @@
   <!-- ══════════════ 적재 탭 ══════════════ -->
   <section class="panel" id="panel-cargo">
     <div class="card">
-      <h2 class="card-title">🚚 차량 선택</h2>
+      <h2 class="card-title">🚚 차량 선택 <span class="hint">(치수를 고쳐서 내 차량으로 저장 가능)</span></h2>
       <select id="truck-select" class="input"></select>
       <div class="grid3 top8">
         <label class="field"><span class="field-label">적재함 길이(cm)</span>
@@ -192,25 +199,37 @@
       </div>
       <label class="field top8"><span class="field-label">최대 적재중량(kg)</span>
         <input type="number" id="truck-payload" class="input" min="1"></label>
+      <button class="btn secondary full top8" id="btn-save-truck">💾 이 치수를 내 차량으로 저장</button>
     </div>
 
     <div class="card">
-      <h2 class="card-title">📦 박스 정보</h2>
-      <div class="grid3">
-        <label class="field"><span class="field-label">가로(cm)</span>
-          <input type="number" id="box-w" class="input" min="1" value="40"></label>
-        <label class="field"><span class="field-label">세로(cm)</span>
-          <input type="number" id="box-d" class="input" min="1" value="30"></label>
-        <label class="field"><span class="field-label">높이(cm)</span>
-          <input type="number" id="box-h" class="input" min="1" value="30"></label>
-      </div>
+      <h2 class="card-title">📦 화물 목록 <span class="hint">(문자 붙여넣기 시 자동 수집 · 직접 추가 가능)</span></h2>
+      <ul class="stop-list" id="cargo-item-list"></ul>
       <div class="grid2 top8">
+        <label class="field"><span class="field-label">종류</span>
+          <select id="item-kind" class="input">
+            <option value="box">박스</option>
+            <option value="plt">파레트</option>
+          </select></label>
         <label class="field"><span class="field-label">수량(개)</span>
-          <input type="number" id="box-count" class="input" min="1" value="93"></label>
-        <label class="field"><span class="field-label">개당 무게(kg, 선택)</span>
-          <input type="number" id="box-weight" class="input" min="0" step="0.1" placeholder="예) 8"></label>
+          <input type="number" id="item-count" class="input" min="1" value="1"></label>
+      </div>
+      <div class="grid3 top8">
+        <label class="field"><span class="field-label">가로(cm)</span>
+          <input type="number" id="item-w" class="input" min="1" value="40"></label>
+        <label class="field"><span class="field-label">세로(cm)</span>
+          <input type="number" id="item-d" class="input" min="1" value="30"></label>
+        <label class="field"><span class="field-label">높이(cm)</span>
+          <input type="number" id="item-h" class="input" min="1" value="30"></label>
+      </div>
+      <label class="field top8"><span class="field-label">총중량(kg, 선택)</span>
+        <input type="number" id="item-weight" class="input" min="0" step="0.1" placeholder="예) 250"></label>
+      <div class="row gap top8">
+        <button class="btn secondary grow" id="btn-add-item">＋ 화물 추가</button>
+        <button class="btn ghost" id="btn-clear-items" title="전체 삭제">🗑️</button>
       </div>
       <button class="btn primary big top8" id="btn-calc-cargo">📐 적재 계산</button>
+      <p class="fine-print">파레트는 기본 1단(겹쳐 쌓지 않음)으로 계산합니다. 목록에서 배지를 눌러 2단 허용으로 바꿀 수 있습니다.</p>
     </div>
 
     <div class="card highlight hidden" id="cargo-result">

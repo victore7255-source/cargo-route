@@ -429,3 +429,13 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   .tab { font-size: 12.5px; }
   h1 { font-size: 20px; }
 }
+
+/* ── 특이사항·일정·문자 요약 표시 ── */
+.stop-item .sub { white-space: normal; }        /* 특이사항이 여러 줄로 보이도록 */
+.stop-item .sub .note,
+.visit-meta.note { color: var(--amber); font-weight: 600; }
+.badge.sched { background: var(--brand-soft); color: var(--brand); }
+.sms-meta {
+  margin-top: 8px; padding: 8px 12px; border-radius: 10px;
+  background: var(--brand-soft); font-size: 12.5px; line-height: 1.55;
+}

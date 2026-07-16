@@ -165,11 +165,14 @@ async function geocodePending(pending) {
 
 // ─────────── 문자 붙여넣기 ───────────
 let smsParsed = [];
+let smsMeta = { schedule: null, items: [] };
 
 $('#btn-parse-sms').addEventListener('click', () => {
   const text = $('#sms-input').value.trim();
   if (!text) { toast('받은 문자를 붙여넣어 주세요'); return; }
-  smsParsed = SmsParser.parse(text);
+  const full = SmsParser.parseFull(text);
+  smsParsed = full.stops;
+  smsMeta = { schedule: full.schedule, items: full.items };
   if (!smsParsed.length) {
     $('#sms-preview').classList.add('hidden');
     toast('주소를 찾지 못했습니다. 문자에 "시/구/로" 형태의 주소가 있는지 확인해 주세요.');
@@ -178,11 +181,26 @@ $('#btn-parse-sms').addEventListener('click', () => {
   renderSmsPreview();
 });
 
+function itemLabel(it) {
+  return `${it.kind === 'plt' ? '파레트' : '박스'} ${it.w}×${it.d}×${it.h}cm × ${it.count}개${it.totalKg ? ` (${it.totalKg}kg)` : ''}`;
+}
+
 function renderSmsPreview() {
   const box = $('#sms-preview');
   if (!smsParsed.length) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
-  box.innerHTML = '<ul class="stop-list top8">'
+
+  let metaHtml = '';
+  if (smsMeta.schedule) {
+    metaHtml += `<div class="sms-meta">📅 <b>${esc(smsMeta.schedule.label)}</b> — ${esc(smsMeta.schedule.detail)}</div>`;
+  }
+  if (smsMeta.items.length) {
+    metaHtml += `<div class="sms-meta">📦 ${smsMeta.items.map(itemLabel).map(esc).join(' · ')} <span class="hint">→ 배송지 추가 시 적재 탭에 함께 담깁니다</span></div>`;
+  }
+  const guessed = smsParsed.some(s => s.guessed);
+
+  box.innerHTML = metaHtml
+    + '<ul class="stop-list top8">'
     + smsParsed.map((s, i) => {
       const sub = [
         s.contactName,
@@ -190,16 +208,18 @@ function renderSmsPreview() {
         s.cargo ? '📦 ' + s.cargo : '',
         s.podPhone ? '📸 인수증 → ' + s.podPhone : '',
       ].filter(Boolean).map(esc).join(' · ');
+      const notes = (s.notes && s.notes.length)
+        ? `<br>⚠️ <span class="note">${s.notes.map(esc).join(' / ')}</span>` : '';
       return `
       <li class="stop-item">
         <span>💬</span>
-        <span class="label">${esc(s.address)}<span class="sub">${sub || '추출된 부가정보 없음'}</span></span>
+        <span class="label">${esc(s.address)}<span class="sub">${sub || '추출된 부가정보 없음'}${notes}</span></span>
         <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-sms-type="${i}" title="눌러서 상차/하차 전환">${s.type}</button>
         <button class="icon-btn" data-sms-del="${i}" title="제외">✕</button>
       </li>`;
     }).join('')
     + '</ul>'
-    + `<p class="fine-print">내용을 확인하고, 상차/하차가 잘못됐으면 배지를 눌러 바꿔주세요.</p>`
+    + `<p class="fine-print">${guessed ? '상차/하차 표기가 없어 <b>맨 위 주소를 상차지</b>, 아래를 하차지로 추정했습니다. ' : ''}내용을 확인하고, 상차/하차가 잘못됐으면 배지를 눌러 바꿔주세요.</p>`
     + `<button class="btn primary full top8" id="btn-add-sms">＋ 위 ${smsParsed.length}곳을 배송지에 추가</button>`;
 
   box.querySelectorAll('[data-sms-type]').forEach(b => b.addEventListener('click', () => {
@@ -216,13 +236,19 @@ function renderSmsPreview() {
 
 async function addSmsStops() {
   const defaultWork = parseInt($('#default-work').value, 10);
+  const schedLabel = smsMeta.schedule ? smsMeta.schedule.label : '';
   const pending = smsParsed.map(p => ({
     id: uid(), label: p.address, lat: null, lng: null,
     type: p.type, workMin: defaultWork, status: 'pending',
     phone: p.phone || '', contactName: p.contactName || '',
     cargo: p.cargo || '', podPhone: p.podPhone || '',
+    notes: p.notes || [], schedule: schedLabel,
   }));
+  if (smsMeta.items.length) {
+    addCargoItems(smsMeta.items, pending[0] ? pending[0].label : '');
+  }
   smsParsed = [];
+  smsMeta = { schedule: null, items: [] };
   $('#sms-input').value = '';
   $('#sms-preview').classList.add('hidden');
   state.stops.push(...pending);
@@ -246,15 +272,18 @@ function renderStops() {
     li.className = 'stop-item' + (s.status === 'error' ? ' error' : '');
     const statusIcon = s.status === 'pending' ? '⏳' : s.status === 'error' ? '⚠️' : '📍';
     const info = [
+      s.schedule ? '📅 ' + s.schedule : '',
       s.contactName,
       s.phone ? '📞 ' + s.phone : '',
       s.cargo ? '📦 ' + s.cargo : '',
       s.podPhone ? '📸 인수증 → ' + s.podPhone : '',
     ].filter(Boolean).map(esc).join(' · ');
+    const notes = (s.notes && s.notes.length)
+      ? `<br>⚠️ <span class="note">${s.notes.map(esc).join(' / ')}</span>` : '';
     li.innerHTML = `
       <span>${statusIcon}</span>
       <span class="label">${esc(s.label)}
-        <span class="sub">${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(s.display || '')}${info ? '<br>' + info : ''}</span>
+        <span class="sub">${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(s.display || '')}${info ? '<br>' + info : ''}${notes}</span>
       </span>
       <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-act="type" data-i="${i}">${s.type}</button>
       <button class="icon-btn" data-act="del" data-i="${i}" title="삭제">✕</button>`;
@@ -352,17 +381,40 @@ $('#btn-optimize').addEventListener('click', async () => {
   }
 });
 
-/** 방문 순서에 따라 도착/출발 예정시각 계산 */
+/**
+ * 시간대별 교통 보정 계수. OSRM 예상치는 정체를 반영하지 못하므로
+ * 출퇴근·점심 시간대 통계 배율을 곱해 실제 소요시간에 가깝게 보정한다.
+ * (실시간 교통 반영은 TMAP·카카오모빌리티 등 유료 API 연동 시 가능)
+ */
+function trafficFactor(date) {
+  const day = date.getDay();
+  const h = date.getHours() + date.getMinutes() / 60;
+  const weekday = day >= 1 && day <= 5;
+  if (weekday) {
+    if (h >= 6.5 && h < 9.5) return 1.5;    // 출근 정체
+    if (h >= 16.5 && h < 19.5) return 1.45; // 퇴근 정체
+    if (h >= 11.5 && h < 14) return 1.15;   // 점심
+    if (h >= 22 || h < 5) return 0.85;      // 심야
+    return 1.1;
+  }
+  if (h >= 10 && h < 20) return 1.2;        // 주말 낮
+  if (h >= 22 || h < 6) return 0.85;
+  return 1.05;
+}
+
+/** 방문 순서에 따라 도착/출발 예정시각 계산 (구간마다 그 시각의 교통 계수를 적용) */
 function buildSchedule(res, departAt) {
   const schedule = [];
   let t = departAt.getTime();
   res.order.forEach((stopIdx, i) => {
     const stop = state.stops[stopIdx];
     const leg = res.legs[i];
-    t += leg.duration * 1000;
+    const factor = trafficFactor(new Date(t));
+    const legDuration = leg.duration * factor;
+    t += legDuration * 1000;
     const arrive = t;
     t += (stop.workMin || 20) * 60 * 1000;
-    schedule.push({ stopId: stop.id, arrive, depart: t, legDistance: leg.distance, legDuration: leg.duration });
+    schedule.push({ stopId: stop.id, arrive, depart: t, legDistance: leg.distance, legDuration, baseDuration: leg.duration, factor });
   });
   return schedule;
 }
@@ -376,11 +428,12 @@ function renderResult() {
   const res = state.result;
   if (!res) return;
 
-  // 합계
+  // 합계 (운전 시간은 시간대 교통 보정치)
   const arriveLast = res.schedule.length ? new Date(res.schedule[res.schedule.length - 1].arrive) : null;
+  const adjDuration = res.schedule.reduce((s, x) => s + (x.legDuration || 0), 0) || res.duration;
   $('#result-totals').innerHTML = `
     <div class="total-chip"><div class="v">${fmtKm(res.distance)}</div><div class="k">총 이동거리</div></div>
-    <div class="total-chip"><div class="v">${fmtDur(res.duration)}</div><div class="k">운전 시간</div></div>
+    <div class="total-chip"><div class="v">${fmtDur(adjDuration)}</div><div class="k">운전(교통 반영)</div></div>
     <div class="total-chip"><div class="v">${res.toll > 0 ? fmtWon(res.toll) : '없음'}</div><div class="k">예상 통행료</div></div>
     <div class="total-chip"><div class="v">${arriveLast ? fmtTime(arriveLast) : '-'}</div><div class="k">최종 도착 예정</div></div>`;
 
@@ -405,10 +458,11 @@ function renderResult() {
     li.innerHTML = `
       <div class="visit-num">${i + 1}</div>
       <div class="visit-body">
-        <div class="visit-name">${esc(stop.label)} <span class="badge ${stop.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${stop.type}</span></div>
+        <div class="visit-name">${esc(stop.label)} <span class="badge ${stop.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${stop.type}</span>${stop.schedule ? ` <span class="badge sched" style="cursor:default">📅 ${esc(stop.schedule)}</span>` : ''}</div>
         <div class="visit-meta">도착 ${fmtTime(new Date(sch.arrive))} · 작업 ${stop.workMin}분 · 출발 ${fmtTime(new Date(sch.depart))}</div>
         ${stop.cargo || stop.phone ? `<div class="visit-meta">${[stop.cargo ? '📦 ' + stop.cargo : '', stop.phone ? '📞 ' + (stop.contactName ? stop.contactName + ' ' : '') + stop.phone : ''].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
-        <div class="visit-leg">↳ 이동 ${fmtKm(sch.legDistance)} · ${fmtDur(sch.legDuration)}</div>
+        ${stop.notes && stop.notes.length ? `<div class="visit-meta note">⚠️ ${stop.notes.map(esc).join(' / ')}</div>` : ''}
+        <div class="visit-leg">↳ 이동 ${fmtKm(sch.legDistance)} · ${fmtDur(sch.legDuration)}${sch.factor && sch.factor > 1.25 ? ' <b>(정체 시간대)</b>' : ''}</div>
       </div>`;
     ol.appendChild(li);
   });
@@ -466,6 +520,12 @@ async function renderAiTips() {
     tips.push({ icon: '⏰', text: `퇴근 정체 시간대와 겹칩니다. 주요 구간 정체를 감안해 여유시간을 30분 이상 확보하세요.` });
   } else {
     tips.push({ icon: '✅', text: `정체가 적은 시간대입니다. 계산된 예상시간대로 운행이 가능할 것으로 보입니다.` });
+  }
+
+  // 교통 보정 안내
+  const adjDur = res.schedule.reduce((s, x) => s + (x.legDuration || 0), 0);
+  if (adjDur > res.duration * 1.08) {
+    tips.push({ icon: '⏱️', text: `시간대 교통량을 반영해 운전 시간을 ${fmtDur(res.duration)} → ${fmtDur(adjDur)}로 보정했습니다. 실시간 교통까지 반영하려면 유료 지도 API(TMAP·카카오모빌리티) 연동이 필요합니다.` });
   }
 
   // 통행료
@@ -565,7 +625,12 @@ $('#btn-start-trip').addEventListener('click', () => {
     events: {},
     snapshot: {
       origin: state.origin,
-      stops: orderedStops().map(s => ({ ...s })),
+      // 구간별 계획 거리·시간을 함께 저장해 운행 중 경유지 추가 시 재계산에 쓴다
+      stops: orderedStops().map((s, i) => ({
+        ...s,
+        planLegDistance: state.result.schedule[i] ? state.result.schedule[i].legDistance : 0,
+        planLegDuration: state.result.schedule[i] ? state.result.schedule[i].legDuration : 0,
+      })),
       distance: state.result.distance,
       duration: state.result.duration,
       toll: state.result.toll,
@@ -618,8 +683,9 @@ function renderDriveChecklist() {
       </div>` : '';
     $('#next-stop-info').innerHTML = `
       <div class="visit-name" style="font-size:17px;margin-bottom:8px">${idx + 1}. ${esc(next.label)}
-        <span class="badge ${next.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${next.type}</span></div>
+        <span class="badge ${next.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${next.type}</span>${next.schedule ? ` <span class="badge sched" style="cursor:default">📅 ${esc(next.schedule)}</span>` : ''}</div>
       ${next.cargo ? `<div class="visit-meta" style="margin-bottom:8px">📦 ${esc(next.cargo)}</div>` : ''}
+      ${next.notes && next.notes.length ? `<div class="visit-meta note" style="margin-bottom:8px">⚠️ ${next.notes.map(esc).join(' / ')}</div>` : ''}
       ${contactHtml}`;
     $('#drive-navi').innerHTML = naviButtonsHtml(next);
   } else {
@@ -642,6 +708,7 @@ function renderDriveChecklist() {
       <div class="visit-body">
         <div class="visit-name">${esc(s.label)} <span class="badge ${s.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${s.type}</span></div>
         <div class="visit-meta">${meta || '대기 중'}</div>
+        ${s.notes && s.notes.length && !ev.doneAt ? `<div class="visit-meta note">⚠️ ${s.notes.map(esc).join(' / ')}</div>` : ''}
       </div>
       <div class="visit-actions">
         ${!ev.arrivedAt ? `<button class="mini-btn" data-act="arrive" data-id="${s.id}">📍 도착</button>` : ''}
@@ -663,6 +730,107 @@ function renderDriveChecklist() {
     saveState();
     renderDriveChecklist();
   }));
+}
+
+// ─────────── 운행 중 화물(경유지) 추가 ───────────
+// 운행 도중 새로 잡은 배차를 붙여넣으면, 현재 위치 기준으로
+// 아직 방문하지 않은 지점 + 새 지점을 묶어 남은 경로를 다시 최적화한다.
+$('#btn-drive-add').addEventListener('click', driveAddStops);
+
+async function driveAddStops() {
+  const trip = state.trip;
+  if (!trip || trip.endedAt) return;
+  const text = $('#drive-add-input').value.trim();
+  if (!text) { toast('추가할 배차 문자나 주소를 붙여넣어 주세요'); return; }
+
+  const st = (msg, cls = '') => {
+    const el = $('#drive-add-status');
+    el.textContent = msg;
+    el.className = 'geo-status ' + cls;
+  };
+  const btn = $('#btn-drive-add');
+  btn.disabled = true;
+
+  try {
+    const full = SmsParser.parseFull(text);
+    const defaultWork = parseInt($('#default-work').value, 10) || 20;
+    let specs;
+    if (full.stops.length) {
+      const schedLabel = full.schedule ? full.schedule.label : '';
+      specs = full.stops.map(p => ({
+        label: p.address, type: p.type,
+        phone: p.phone || '', contactName: p.contactName || '',
+        cargo: p.cargo || '', podPhone: p.podPhone || '',
+        notes: p.notes || [], schedule: schedLabel,
+      }));
+    } else {
+      const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+      specs = lines.map((label, i) => ({
+        label, type: lines.length >= 2 && i === 0 ? '상차' : '하차',
+        phone: '', contactName: '', cargo: '', podPhone: '', notes: [], schedule: '',
+      }));
+    }
+
+    // 주소 → 좌표
+    const newStops = [];
+    for (let i = 0; i < specs.length; i++) {
+      st(`🔍 주소 확인 중… (${i + 1}/${specs.length}) ${specs[i].label}`);
+      const r = await Geo.geocode(specs[i].label).catch(() => null);
+      if (!r) { toast(`⚠️ 주소를 찾지 못해 제외: ${specs[i].label}`); continue; }
+      newStops.push({
+        id: uid(), ...specs[i], lat: r.lat, lng: r.lng, display: r.display,
+        status: 'ok', workMin: defaultWork,
+      });
+    }
+    if (!newStops.length) { st('✗ 추가할 수 있는 주소가 없습니다. 주소를 확인해 주세요.', 'err'); return; }
+
+    // 재계산 기준점: GPS 현재 위치 → 실패 시 마지막 완료 지점 → 출발지
+    st('📡 현재 위치 확인 중…');
+    let cur;
+    try {
+      const p = await Geo.currentPosition();
+      cur = { label: p.display, lat: p.lat, lng: p.lng };
+    } catch (e) {
+      const done = trip.snapshot.stops.filter(s => trip.events[s.id] && trip.events[s.id].doneAt);
+      cur = done.length ? done[done.length - 1] : trip.snapshot.origin;
+      toast('현재 위치를 가져오지 못해 마지막 완료 지점 기준으로 계산합니다');
+    }
+
+    const isDone = s => trip.events[s.id] && trip.events[s.id].doneAt;
+    const remaining = trip.snapshot.stops.filter(s => !isDone(s));
+    const all = [...remaining, ...newStops];
+
+    st(`🤖 남은 ${all.length}곳의 경로를 다시 계산하는 중…`);
+    const res = await Router.optimize(cur, all, null);
+    const ordered = res.order.map(i => all[i]).map((s, i) => ({
+      ...s,
+      planLegDistance: res.legs[i] ? res.legs[i].distance : 0,
+      planLegDuration: res.legs[i] ? res.legs[i].duration : 0,
+    }));
+    const done = trip.snapshot.stops.filter(isDone);
+    const doneDistance = done.reduce((s, x) => s + (x.planLegDistance || 0), 0);
+    const doneDuration = done.reduce((s, x) => s + (x.planLegDuration || 0), 0);
+    trip.snapshot.stops = [...done, ...ordered];
+    trip.snapshot.distance = doneDistance + res.distance;
+    trip.snapshot.duration = doneDuration + res.duration;
+
+    // 경로 탭 배송지 목록·적재 탭 화물 목록에도 반영
+    state.stops.push(...newStops.map(s => ({ ...s })));
+    if (full.items && full.items.length) {
+      addCargoItems(full.items, newStops[0].label);
+    }
+
+    $('#drive-add-input').value = '';
+    st(res.approx ? '⚠️ 경로 서버 연결이 원활하지 않아 직선거리 기반 추정치입니다.' : '');
+    saveState();
+    renderStops();
+    renderDriveChecklist();
+    toast(`✅ ${newStops.length}곳 추가 — 남은 경로를 다시 계산했습니다. 새 방문 순서를 확인하세요.`);
+  } catch (e) {
+    st('✗ 재계산에 실패했습니다: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 $('#btn-end-trip').addEventListener('click', () => {
@@ -887,11 +1055,15 @@ function renderEv() {
 }
 
 // ─────────── 적재 계산 ───────────
+const TRUCK_KEY = 'cargo-truck-v1';
+const ITEMS_KEY = 'cargo-items-v1';
+
 const TRUCK_PRESETS = [
   { name: '봉고3 EV / 1톤 카고 (개방형)', l: 286, w: 163, h: 120, payload: 1000 },
   { name: '1톤 탑차', l: 280, w: 160, h: 170, payload: 1000 },
   { name: '1톤 저상 탑차', l: 280, w: 160, h: 140, payload: 1000 },
   { name: '1톤 윙바디', l: 280, w: 160, h: 170, payload: 1000 },
+  { name: '1톤 저상 윙바디', l: 285, w: 165, h: 125, payload: 1000 },
   { name: '다마스 밴', l: 165, w: 110, h: 105, payload: 400 },
   { name: '라보', l: 220, w: 134, h: 100, payload: 550 },
   { name: '2.5톤 카고', l: 430, w: 186, h: 160, payload: 2500 },
@@ -901,86 +1073,177 @@ const TRUCK_PRESETS = [
   { name: '직접 입력', l: null, w: null, h: null, payload: null },
 ];
 
-function initCargo() {
+function loadMyTruck() {
+  try { return JSON.parse(localStorage.getItem(TRUCK_KEY) || 'null'); } catch (e) { return null; }
+}
+
+function truckOptions() {
+  const my = loadMyTruck();
+  return my ? [{ ...my, name: '💾 내 차량 — ' + my.name, mine: true }, ...TRUCK_PRESETS] : TRUCK_PRESETS.slice();
+}
+
+function renderTruckSelect(selectMine) {
   const sel = $('#truck-select');
-  sel.innerHTML = TRUCK_PRESETS.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
-  const apply = () => {
-    const p = TRUCK_PRESETS[+sel.value];
-    if (p.l) {
-      $('#truck-l').value = p.l; $('#truck-w').value = p.w;
-      $('#truck-h').value = p.h; $('#truck-payload').value = p.payload;
-    }
-  };
-  sel.addEventListener('change', apply);
-  apply();
+  const opts = truckOptions();
+  sel.innerHTML = opts.map((p, i) => `<option value="${i}">${esc(p.name)}</option>`).join('');
+  if (selectMine && opts[0] && opts[0].mine) sel.value = '0';
+  applyTruckPreset();
+}
+
+function applyTruckPreset() {
+  const p = truckOptions()[+$('#truck-select').value];
+  if (p && p.l) {
+    $('#truck-l').value = p.l; $('#truck-w').value = p.w;
+    $('#truck-h').value = p.h; $('#truck-payload').value = p.payload;
+  }
+}
+
+// ── 화물 목록 (문자에서 자동 수집 + 직접 추가, localStorage 유지) ──
+let cargoItems = [];
+function loadItems() {
+  try { cargoItems = JSON.parse(localStorage.getItem(ITEMS_KEY) || '[]'); } catch (e) { cargoItems = []; }
+}
+function saveItems() {
+  try { localStorage.setItem(ITEMS_KEY, JSON.stringify(cargoItems)); } catch (e) { /* ignore */ }
+}
+
+/** 문자 파싱 결과의 화물들을 목록에 누적한다 (경로·운행 탭에서 호출) */
+function addCargoItems(items, fromLabel) {
+  items.forEach(it => cargoItems.push({
+    id: uid(), kind: it.kind, w: it.w, d: it.d, h: it.h,
+    count: it.count, totalKg: it.totalKg || 0,
+    stack: 1, from: fromLabel || '',
+  }));
+  saveItems();
+  renderCargoItems();
+  toast(`📦 화물 ${items.length}건을 적재 탭 목록에 추가했습니다`);
+}
+
+function renderCargoItems() {
+  const ul = $('#cargo-item-list');
+  if (!cargoItems.length) {
+    ul.innerHTML = '<li class="stop-item"><span>📭</span><span class="label">담긴 화물이 없습니다<span class="sub">문자를 붙여넣으면 치수·수량이 자동으로 담깁니다</span></span></li>';
+    return;
+  }
+  ul.innerHTML = cargoItems.map((it, i) => `
+    <li class="stop-item">
+      <span>${it.kind === 'plt' ? '🟫' : '📦'}</span>
+      <span class="label">${esc(itemLabel(it))}
+        <span class="sub">${[it.from ? '출처: ' + it.from : '', it.kind === 'plt' ? (it.stack >= 2 ? '2단 허용' : '1단(기본)') : ''].filter(Boolean).map(esc).join(' · ')}</span>
+      </span>
+      ${it.kind === 'plt' ? `<button class="badge ${it.stack >= 2 ? 'load' : 'unload'}" data-item-stack="${i}" title="파레트 겹침 허용 전환">${it.stack >= 2 ? '2단' : '1단'}</button>` : ''}
+      <button class="icon-btn" data-item-del="${i}" title="삭제">✕</button>
+    </li>`).join('');
+  ul.querySelectorAll('[data-item-stack]').forEach(b => b.addEventListener('click', () => {
+    const it = cargoItems[+b.dataset.itemStack];
+    it.stack = it.stack >= 2 ? 1 : 2;
+    saveItems(); renderCargoItems();
+  }));
+  ul.querySelectorAll('[data-item-del]').forEach(b => b.addEventListener('click', () => {
+    cargoItems.splice(+b.dataset.itemDel, 1);
+    saveItems(); renderCargoItems();
+  }));
+}
+
+function initCargo() {
+  renderTruckSelect(true);
+  $('#truck-select').addEventListener('change', applyTruckPreset);
+  $('#btn-save-truck').addEventListener('click', () => {
+    const l = parseFloat($('#truck-l').value), w = parseFloat($('#truck-w').value),
+          h = parseFloat($('#truck-h').value), payload = parseFloat($('#truck-payload').value) || 0;
+    if (!(l > 0 && w > 0 && h > 0)) { toast('적재함 길이·폭·높이를 먼저 입력해 주세요'); return; }
+    const prev = loadMyTruck();
+    const name = prompt('차량 이름을 입력하세요 (예: 1톤 저상 윙바디)', prev ? prev.name : '1톤 저상 윙바디');
+    if (!name) return;
+    try { localStorage.setItem(TRUCK_KEY, JSON.stringify({ name: name.trim(), l, w, h, payload })); } catch (e) { /* ignore */ }
+    renderTruckSelect(true);
+    toast('💾 내 차량으로 저장했습니다. 다음부터 자동으로 선택됩니다.');
+  });
+  loadItems();
+  renderCargoItems();
+  $('#btn-add-item').addEventListener('click', () => {
+    const it = {
+      kind: $('#item-kind').value,
+      w: parseFloat($('#item-w').value), d: parseFloat($('#item-d').value), h: parseFloat($('#item-h').value),
+      count: parseInt($('#item-count').value, 10),
+      totalKg: parseFloat($('#item-weight').value) || 0,
+    };
+    if (!(it.w > 0 && it.d > 0 && it.h > 0 && it.count > 0)) { toast('화물 치수와 수량을 입력해 주세요'); return; }
+    addCargoItems([it], '직접 입력');
+  });
+  $('#btn-clear-items').addEventListener('click', () => {
+    if (!cargoItems.length) return;
+    if (!confirm('화물 목록을 모두 비울까요?')) return;
+    cargoItems = [];
+    saveItems(); renderCargoItems();
+    $('#cargo-result').classList.add('hidden');
+  });
+}
+
+/**
+ * 한 화물의 실을 자리를 계산한다 — 단순 부피(CBM)가 아니라
+ * "폭에 몇 줄 × 높이에 몇 단 × 길이 방향 몇 열"의 실제 쌓기 기준.
+ * 파레트는 기본 1단(stack으로 2단 허용), 박스는 높이가 허용하는 만큼 쌓는다.
+ */
+function placeItem(item, TW, TH) {
+  const { w, d, h, count } = item;
+  const maxStack = item.kind === 'plt' ? (item.stack || 1) : Infinity;
+  let best = null;
+  for (const [x, y] of [[w, d], [d, w]]) {   // 세운 상태에서 가로/세로 회전만 허용
+    const across = Math.floor(TW / x);
+    const layers = Math.min(Math.floor(TH / h), maxStack);
+    if (across < 1 || layers < 1) continue;
+    const cols = Math.ceil(count / (across * layers));
+    const usedLen = cols * y;
+    if (!best || usedLen < best.usedLen) best = { across, layers, cols, usedLen };
+  }
+  if (!best) {
+    return { fit: false, reason: h > TH ? `높이 ${h}cm가 적재함 높이 ${TH}cm를 넘습니다` : `가로·세로(${w}×${d}cm)가 적재함 폭 ${TW}cm를 넘습니다` };
+  }
+  return { fit: true, ...best, wastedH: TH - best.layers * h };
 }
 
 $('#btn-calc-cargo').addEventListener('click', () => {
   const TL = parseFloat($('#truck-l').value), TW = parseFloat($('#truck-w').value),
         TH = parseFloat($('#truck-h').value), payload = parseFloat($('#truck-payload').value) || 0;
-  const bw = parseFloat($('#box-w').value), bd = parseFloat($('#box-d').value),
-        bh = parseFloat($('#box-h').value);
-  const count = parseInt($('#box-count').value, 10);
-  const unitWeight = parseFloat($('#box-weight').value) || 0;
+  if (!(TL > 0 && TW > 0 && TH > 0)) { toast('차량 치수를 입력해 주세요'); return; }
+  if (!cargoItems.length) { toast('화물을 1건 이상 추가해 주세요 (문자 붙여넣기 시 자동 수집됩니다)'); return; }
 
-  if (!(TL > 0 && TW > 0 && TH > 0 && bw > 0 && bd > 0 && bh > 0 && count > 0)) {
-    toast('차량과 박스 치수를 모두 입력해 주세요');
-    return;
-  }
-
-  // 6가지 방향으로 배치해 최대 적재 수 탐색
-  const orientations = [
-    [bw, bd, bh], [bd, bw, bh],           // 정방향 (권장 — 박스를 세운 상태)
-    [bw, bh, bd], [bh, bw, bd],           // 옆으로 눕힘
-    [bd, bh, bw], [bh, bd, bw],
-  ];
-  let best = null;
-  orientations.forEach(([x, y, z], oi) => {
-    const nx = Math.floor(TL / x), ny = Math.floor(TW / y), nz = Math.floor(TH / z);
-    const cap = nx * ny * nz;
-    const upright = oi < 2;
-    if (!best || cap > best.cap || (cap === best.cap && upright && !best.upright)) {
-      best = { cap, nx, ny, nz, x, y, z, upright };
-    }
-  });
-
-  const boxVol = bw * bd * bh;                       // cm³
-  const cbm = (boxVol * count) / 1e6;                // m³
-  const truckCbm = (TL * TW * TH) / 1e6;
-  const rate = Math.min(999, (cbm / truckCbm) * 100);
-  const fitsVolume = count <= best.cap;
-  const totalWeight = unitWeight * count;
-  const fitsWeight = !unitWeight || totalWeight <= payload;
+  const results = cargoItems.map(it => ({ it, place: placeItem(it, TW, TH) }));
+  const blocked = results.filter(r => !r.place.fit);
+  const usedLen = results.reduce((s, r) => s + (r.place.fit ? r.place.usedLen : 0), 0);
+  const totalKg = cargoItems.reduce((s, i) => s + (i.totalKg || 0), 0);
+  const lenRate = (usedLen / TL) * 100;
+  const lenOk = usedLen <= TL;
+  const weightOk = !payload || !totalKg || totalKg <= payload;
 
   let verdict;
-  if (fitsVolume && fitsWeight) {
-    verdict = `<div class="verdict ok">✅ 적재 가능 — ${count}개 전량 실을 수 있습니다 (최대 ${best.cap}개)</div>`;
-  } else if (!fitsVolume) {
-    verdict = `<div class="verdict bad">🔴 공간 부족 — 최대 ${best.cap}개까지 가능, ${count - best.cap}개 초과</div>`;
+  if (blocked.length) {
+    verdict = `<div class="verdict bad">🔴 실을 수 없는 화물이 있습니다 — ${blocked.map(r => esc(itemLabel(r.it)) + ' (' + esc(r.place.reason) + ')').join(', ')}</div>`;
+  } else if (!lenOk) {
+    verdict = `<div class="verdict bad">🔴 공간 부족 — 바닥 길이 ${Math.round(usedLen)}cm 필요 / 적재함 ${TL}cm (약 ${Math.round(usedLen - TL)}cm 초과). 일부는 2회차 운행을 검토하세요.</div>`;
+  } else if (!weightOk) {
+    verdict = `<div class="verdict bad">🔴 중량 초과 — 총 ${totalKg.toFixed(0)}kg / 최대적재 ${payload}kg (${(totalKg - payload).toFixed(0)}kg 초과)</div>`;
+  } else if (lenRate > 90) {
+    verdict = `<div class="verdict warn">⚠️ 아슬아슬하게 적재 가능 — 바닥 길이 ${Math.round(usedLen)}cm / ${TL}cm (여유 ${Math.round(TL - usedLen)}cm). 실제 쌓을 때 빈틈 손실을 감안하세요.</div>`;
   } else {
-    verdict = `<div class="verdict bad">🔴 중량 초과 — 총 ${totalWeight.toFixed(0)}kg / 최대적재 ${payload}kg (${(totalWeight - payload).toFixed(0)}kg 초과)</div>`;
+    verdict = `<div class="verdict ok">✅ 전량 적재 가능 — 바닥 길이 ${Math.round(usedLen)}cm / ${TL}cm 사용 (여유 ${Math.round(TL - usedLen)}cm)</div>`;
   }
 
-  const dirText = best.upright ? '세운 상태(정방향)' : `눕혀서 ${best.x}×${best.y}cm 면을 바닥으로`;
-  const rows = [
-    ['총 부피 (CBM)', `${cbm.toFixed(2)} m³`],
-    ['적재함 용적', `${truckCbm.toFixed(2)} m³`],
-    ['적재율', `${rate.toFixed(0)}%`],
-    ['최대 적재 가능 수', `${best.cap}개 (가로 ${best.nx} × 세로 ${best.ny} × ${best.nz}단)`],
-  ];
-  if (unitWeight) {
-    rows.push(['예상 총중량', `${totalWeight.toFixed(0)}kg / 최대 ${payload}kg`]);
-  }
-
-  const layers = Math.min(best.nz, Math.ceil(count / (best.nx * best.ny)));
-  const tip = fitsVolume
-    ? `박스를 ${dirText}로 놓고, 바닥에 가로 ${best.nx}개 × 세로 ${best.ny}개(층당 ${best.nx * best.ny}개)씩 ${layers}단으로 쌓으세요. 하차 순서가 늦은 짐부터 안쪽에 싣는 것을 잊지 마세요.`
-    : `공간이 부족합니다. 박스를 ${dirText}로 최대한 채우고, 남는 ${count - best.cap}개는 2회차 운행 또는 상위 차종을 검토하세요.`;
+  const rows = results.map(r => {
+    if (!r.place.fit) return [itemLabel(r.it), '❌ ' + r.place.reason];
+    const p = r.place;
+    let txt = `폭 ${p.across}줄 × ${p.layers}단 × 길이 ${p.cols}열 → 바닥 ${Math.round(p.usedLen)}cm`;
+    if (p.wastedH >= 30 && p.wastedH < r.it.h) txt += ` · 위 ${Math.round(p.wastedH)}cm는 활용 불가`;
+    return [itemLabel(r.it), txt];
+  });
+  rows.push(['바닥 길이 합계', `${Math.round(usedLen)}cm / ${TL}cm (${Math.min(999, lenRate).toFixed(0)}%)`]);
+  if (totalKg) rows.push(['총중량', `${totalKg.toFixed(0)}kg / 최대 ${payload}kg`]);
 
   $('#cargo-output').innerHTML = verdict
-    + `<div class="gauge"><div style="width:${Math.min(100, rate)}%"></div></div>`
-    + '<table class="result-table">' + rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('') + '</table>'
-    + `<p class="fine-print top8">💡 추천 적재 방법: ${tip}</p>`;
+    + `<div class="gauge"><div style="width:${Math.min(100, lenRate)}%"></div></div>`
+    + '<table class="result-table">' + rows.map(r => `<tr><td>${esc(r[0])}</td><td>${r[1]}</td></tr>`).join('') + '</table>'
+    + `<p class="fine-print top8">💡 화물별로 구간을 나눠 싣는 기준의 근사 계산입니다. 하차 순서가 늦은 짐부터 안쪽에 실으세요. 파레트 위에 박스를 겹쳐 실을 수 있으면 실제로는 더 여유가 생깁니다.</p>`;
   $('#cargo-result').classList.remove('hidden');
 });
 
