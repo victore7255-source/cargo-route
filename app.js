@@ -1096,6 +1096,18 @@ function applyTruckPreset() {
     $('#truck-l').value = p.l; $('#truck-w').value = p.w;
     $('#truck-h').value = p.h; $('#truck-payload').value = p.payload;
   }
+  updateTruckCbm();
+}
+
+/** 차량 치수 아래에 적재함 용적(CBM)을 항상 보여준다 */
+function updateTruckCbm() {
+  const l = parseFloat($('#truck-l').value), w = parseFloat($('#truck-w').value), h = parseFloat($('#truck-h').value);
+  const el = $('#truck-cbm');
+  if (l > 0 && w > 0 && h > 0) {
+    el.innerHTML = `📐 적재함 용적: <b>${(l * w * h / 1e6).toFixed(2)} CBM</b> (${l} × ${w} × ${h}cm)`;
+  } else {
+    el.textContent = '';
+  }
 }
 
 // ── 화물 목록 (문자에서 자동 수집 + 직접 추가, localStorage 유지) ──
@@ -1157,8 +1169,9 @@ function initCargo() {
     if (!name) return;
     try { localStorage.setItem(TRUCK_KEY, JSON.stringify({ name: name.trim(), l, w, h, payload })); } catch (e) { /* ignore */ }
     renderTruckSelect(true);
-    toast('💾 내 차량으로 저장했습니다. 다음부터 자동으로 선택됩니다.');
+    toast(`💾 내 차량으로 저장했습니다 (적재함 ${(l * w * h / 1e6).toFixed(2)} CBM). 다음부터 자동으로 선택됩니다.`);
   });
+  ['#truck-l', '#truck-w', '#truck-h'].forEach(sel => $(sel).addEventListener('input', updateTruckCbm));
   loadItems();
   renderCargoItems();
   $('#btn-add-item').addEventListener('click', () => {
@@ -1203,57 +1216,89 @@ function placeItem(item, TW, TH) {
   return { fit: true, ...best, wastedH: TH - best.layers * h };
 }
 
-/**
- * 적재함을 위에서 내려다본 배치도 SVG.
- * 좌표 단위 = cm. 바닥 칸 하나 = 짐 한 무더기(스택), 연한 칸은 위 단이 덜 찬 자리.
- */
-function cargoDiagramSvg(results, TL, TW) {
-  const fits = results.filter(r => r.place.fit && r.place.x);
-  if (!fits.length) return '';
-  const COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#10b981', '#ec4899', '#84cc16'];
-  const CAB = 36, PAD = 4;
-  const W = CAB + TL + PAD * 2, H = TW + PAD * 2;
-  let svg = `<rect x="${CAB}" y="${PAD}" width="${TL}" height="${TW}" rx="4" fill="var(--card-sub)" stroke="var(--line)" stroke-width="1.5"/>`;
-  // 운전석(앞) 표시
-  svg += `<rect x="${PAD}" y="${PAD + TW * 0.15}" width="${CAB - 12}" height="${TW * 0.7}" rx="8" fill="var(--brand-soft)" stroke="var(--line)"/>`
-    + `<text x="${PAD + (CAB - 12) / 2}" y="${PAD + TW / 2}" text-anchor="middle" dominant-baseline="central" font-size="13" fill="var(--brand)">앞</text>`;
+const DIAGRAM_COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#10b981', '#ec4899', '#84cc16'];
 
-  let cursor = CAB;              // 적재함 앞쪽부터 채워 나간다
-  let overflow = false;
-  const legend = [];
+/** 적재함 배치도(위에서 본 모습 + 옆에서 본 모습). results는 순차 적재 계산 결과. */
+function cargoDiagramSvg(results, TL, TW, TH) {
+  const fits = results.filter(r => r.loaded > 0);
+  if (!fits.length) return '';
+  const CAB = 36, PAD = 4;
+  const hasLeft = results.some(r => r.left > 0);
+
+  // ── 위에서 본 모습 ──
+  const W1 = CAB + TL + PAD * 2, H1 = TW + PAD * 2;
+  let top = `<rect x="${CAB}" y="${PAD}" width="${TL}" height="${TW}" rx="4" fill="var(--card-sub)" stroke="var(--line)" stroke-width="1.5"/>`;
+  top += `<rect x="${PAD}" y="${PAD + TW * 0.15}" width="${CAB - 12}" height="${TW * 0.7}" rx="8" fill="var(--brand-soft)" stroke="var(--line)"/>`
+    + `<text x="${PAD + (CAB - 12) / 2}" y="${PAD + TW / 2}" text-anchor="middle" dominant-baseline="central" font-size="13" fill="var(--brand)">앞</text>`;
+  let cursor = CAB;
   fits.forEach((r, idx) => {
-    const p = r.place, it = r.it;
-    const color = COLORS[idx % COLORS.length];
-    legend.push({ color, label: `${itemLabel(it)} — ${p.layers}단` });
-    let remaining = it.count;
-    for (let j = 0; j < p.cols; j++) {
-      if (cursor + p.y > CAB + TL + 0.5) { overflow = true; break; }
+    const p = r.place;
+    const color = DIAGRAM_COLORS[results.indexOf(r) % DIAGRAM_COLORS.length];
+    let remaining = r.loaded;
+    for (let j = 0; j < r.usedCols; j++) {
       for (let k = 0; k < p.across && remaining > 0; k++) {
         const stackH = Math.min(p.layers, remaining);
         remaining -= stackH;
-        svg += `<rect x="${(cursor + 0.8).toFixed(1)}" y="${(PAD + k * p.x + 0.8).toFixed(1)}" width="${(p.y - 1.6).toFixed(1)}" height="${(p.x - 1.6).toFixed(1)}" rx="2" fill="${color}" fill-opacity="${stackH === p.layers ? 0.85 : 0.4}" stroke="${color}" stroke-width="1"/>`;
+        top += `<rect x="${(cursor + 0.8).toFixed(1)}" y="${(PAD + k * p.x + 0.8).toFixed(1)}" width="${(p.y - 1.6).toFixed(1)}" height="${(p.x - 1.6).toFixed(1)}" rx="2" fill="${color}" fill-opacity="${stackH === p.layers ? 0.85 : 0.4}" stroke="${color}" stroke-width="1"/>`;
       }
       cursor += p.y;
     }
   });
-
   const freeLen = CAB + TL - cursor;
-  if (!overflow && freeLen > 8) {
-    svg += `<rect x="${cursor + 2}" y="${PAD + 2}" width="${freeLen - 4}" height="${TW - 4}" rx="4" fill="none" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="6 5"/>`;
+  if (freeLen > 8) {
+    const c = hasLeft ? 'var(--red)' : 'var(--green)';
+    top += `<rect x="${cursor + 2}" y="${PAD + 2}" width="${freeLen - 4}" height="${TW - 4}" rx="4" fill="none" stroke="${c}" stroke-width="1.5" stroke-dasharray="6 5"/>`;
     const cx = cursor + freeLen / 2;
-    svg += freeLen > 60
-      ? `<text x="${cx}" y="${PAD + TW / 2 - 9}" text-anchor="middle" dominant-baseline="central" font-size="15" font-weight="700" fill="var(--green)">남는 공간<tspan x="${cx}" dy="19">${Math.round(freeLen)}cm</tspan></text>`
-      : `<text x="${cx}" y="${PAD + TW / 2}" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="700" fill="var(--green)">${Math.round(freeLen)}</text>`;
-  }
-  if (overflow) {
-    svg += `<text x="${CAB + TL - 5}" y="${PAD + TW / 2}" text-anchor="end" dominant-baseline="central" font-size="14" font-weight="700" fill="var(--red)">⚠️ 초과</text>`;
+    const txt = hasLeft ? '부족' : '남는 공간';
+    top += freeLen > 60
+      ? `<text x="${cx}" y="${PAD + TW / 2 - 9}" text-anchor="middle" dominant-baseline="central" font-size="15" font-weight="700" fill="${c}">${txt}<tspan x="${cx}" dy="19">${Math.round(freeLen)}cm</tspan></text>`
+      : `<text x="${cx}" y="${PAD + TW / 2}" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="700" fill="${c}">${Math.round(freeLen)}</text>`;
+  } else if (hasLeft) {
+    top += `<text x="${CAB + TL - 5}" y="${PAD + TW / 2}" text-anchor="end" dominant-baseline="central" font-size="14" font-weight="700" fill="var(--red)">⚠️</text>`;
   }
 
-  const legendHtml = legend.map(l =>
-    `<span class="diagram-key"><i style="background:${l.color}"></i>${esc(l.label)}</span>`).join('')
+  // ── 옆에서 본 모습 (몇 단으로 쌓이는지) ──
+  const W2 = CAB + TL + PAD * 2, H2 = TH + PAD * 2;
+  const GROUND = PAD + TH;
+  let side = `<rect x="${CAB}" y="${PAD}" width="${TL}" height="${TH}" rx="4" fill="var(--card-sub)" stroke="var(--line)" stroke-width="1.5"/>`;
+  side += `<rect x="${PAD}" y="${PAD + TH * 0.25}" width="${CAB - 12}" height="${TH * 0.75}" rx="8" fill="var(--brand-soft)" stroke="var(--line)"/>`
+    + `<text x="${PAD + (CAB - 12) / 2}" y="${PAD + TH * 0.62}" text-anchor="middle" dominant-baseline="central" font-size="13" fill="var(--brand)">앞</text>`;
+  cursor = CAB;
+  fits.forEach((r) => {
+    const p = r.place, it = r.it;
+    const color = DIAGRAM_COLORS[results.indexOf(r) % DIAGRAM_COLORS.length];
+    for (let l = 0; l < p.layers; l++) {
+      side += `<rect x="${(cursor + 0.8).toFixed(1)}" y="${(GROUND - (l + 1) * it.h + 0.8).toFixed(1)}" width="${(r.usedLen - 1.6).toFixed(1)}" height="${(it.h - 1.6).toFixed(1)}" rx="2" fill="${color}" fill-opacity="0.85" stroke="${color}" stroke-width="1"/>`;
+    }
+    if (r.usedLen > 34) {
+      side += `<text x="${cursor + r.usedLen / 2}" y="${GROUND - p.layers * it.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="700" fill="#fff">${p.layers}단</text>`;
+    }
+    // 블록 위의 못 쓰는 공간 표시
+    const wasted = TH - p.layers * it.h;
+    if (wasted >= 25 && r.usedLen > 60) {
+      side += `<text x="${cursor + r.usedLen / 2}" y="${PAD + wasted / 2}" text-anchor="middle" dominant-baseline="central" font-size="10" fill="var(--ink-dim)">↕ ${Math.round(wasted)}cm 빈 공간</text>`;
+    }
+    cursor += r.usedLen;
+  });
+  if (freeLen > 8) {
+    const c = hasLeft ? 'var(--red)' : 'var(--green)';
+    side += `<rect x="${cursor + 2}" y="${PAD + 2}" width="${freeLen - 4}" height="${TH - 4}" rx="4" fill="none" stroke="${c}" stroke-width="1.5" stroke-dasharray="6 5"/>`;
+  }
+
+  // ── 범례 ──
+  const legendHtml = results.map((r, idx) => {
+    if (!(r.loaded > 0)) return '';
+    const color = DIAGRAM_COLORS[idx % DIAGRAM_COLORS.length];
+    const extra = r.left > 0 ? ` · <b style="color:var(--red)">${r.left}개 못 실음</b>` : '';
+    return `<span class="diagram-key"><i style="background:${color}"></i>${esc(itemLabel(r.it))} — ${r.place.layers}단${extra}</span>`;
+  }).join('')
     + (fits.some(r => r.place.layers > 1) ? '<span class="diagram-key hint">연한 칸 = 위 단이 덜 찬 자리</span>' : '');
+
   return `<div class="cargo-diagram">
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="적재함 배치도">${svg}</svg>
+    <p class="diagram-cap">🔽 위에서 본 배치</p>
+    <svg viewBox="0 0 ${W1} ${H1}" role="img" aria-label="적재함 배치도 (위)">${top}</svg>
+    <p class="diagram-cap">➡️ 옆에서 본 모습 (쌓는 단수)</p>
+    <svg viewBox="0 0 ${W2} ${H2}" role="img" aria-label="적재함 배치도 (옆)">${side}</svg>
     <div class="diagram-legend">${legendHtml}</div>
   </div>`;
 }
@@ -1264,40 +1309,61 @@ $('#btn-calc-cargo').addEventListener('click', () => {
   if (!(TL > 0 && TW > 0 && TH > 0)) { toast('차량 치수를 입력해 주세요'); return; }
   if (!cargoItems.length) { toast('화물을 1건 이상 추가해 주세요 (문자 붙여넣기 시 자동 수집됩니다)'); return; }
 
-  const results = cargoItems.map(it => ({ it, place: placeItem(it, TW, TH) }));
+  // 목록 순서대로 앞에서부터 채워 넣는다 — 공간이 모자라면 몇 개까지 실리는지 계산
+  let remainLen = TL;
+  const results = cargoItems.map(it => {
+    const place = placeItem(it, TW, TH);
+    if (!place.fit) return { it, place, loaded: 0, left: it.count, usedLen: 0, usedCols: 0 };
+    const perCol = place.across * place.layers;
+    const colsFit = Math.max(0, Math.floor(remainLen / place.y));
+    const loaded = Math.min(it.count, colsFit * perCol);
+    const usedCols = Math.ceil(loaded / perCol);
+    const usedLen = usedCols * place.y;
+    remainLen -= usedLen;
+    return { it, place, loaded, left: it.count - loaded, usedLen, usedCols };
+  });
+
   const blocked = results.filter(r => !r.place.fit);
-  const usedLen = results.reduce((s, r) => s + (r.place.fit ? r.place.usedLen : 0), 0);
-  const totalKg = cargoItems.reduce((s, i) => s + (i.totalKg || 0), 0);
+  const partial = results.filter(r => r.place.fit && r.left > 0);
+  const usedLen = TL - remainLen;
   const lenRate = (usedLen / TL) * 100;
-  const lenOk = usedLen <= TL;
+  const totalKg = cargoItems.reduce((s, i) => s + (i.totalKg || 0), 0);
   const weightOk = !payload || !totalKg || totalKg <= payload;
+  const loadedCbm = results.reduce((s, r) => s + r.it.w * r.it.d * r.it.h * r.loaded, 0) / 1e6;
+  const remainCbm = (remainLen * TW * TH) / 1e6;
 
   let verdict;
   if (blocked.length) {
     verdict = `<div class="verdict bad">🔴 실을 수 없는 화물이 있습니다 — ${blocked.map(r => esc(itemLabel(r.it)) + ' (' + esc(r.place.reason) + ')').join(', ')}</div>`;
-  } else if (!lenOk) {
-    verdict = `<div class="verdict bad">🔴 공간 부족 — 바닥 길이 ${Math.round(usedLen)}cm 필요 / 적재함 ${TL}cm (약 ${Math.round(usedLen - TL)}cm 초과). 일부는 2회차 운행을 검토하세요.</div>`;
+  } else if (partial.length) {
+    verdict = `<div class="verdict bad">🔴 공간 부족 — ${partial.map(r =>
+      `${r.it.kind === 'plt' ? '파레트' : '박스'} ${r.it.count}개 중 <b>${r.loaded}개만 적재, ${r.left}개 못 실음</b>`).join(' · ')}. 남는 짐은 2회차 운행을 검토하세요.</div>`;
   } else if (!weightOk) {
     verdict = `<div class="verdict bad">🔴 중량 초과 — 총 ${totalKg.toFixed(0)}kg / 최대적재 ${payload}kg (${(totalKg - payload).toFixed(0)}kg 초과)</div>`;
   } else if (lenRate > 90) {
-    verdict = `<div class="verdict warn">⚠️ 아슬아슬하게 적재 가능 — 바닥 길이 ${Math.round(usedLen)}cm / ${TL}cm (여유 ${Math.round(TL - usedLen)}cm). 실제 쌓을 때 빈틈 손실을 감안하세요.</div>`;
+    verdict = `<div class="verdict warn">⚠️ 아슬아슬하게 전량 적재 — 바닥 길이 ${Math.round(usedLen)}cm / ${TL}cm (여유 ${Math.round(remainLen)}cm). 실제 쌓을 때 빈틈 손실을 감안하세요.</div>`;
   } else {
-    verdict = `<div class="verdict ok">✅ 전량 적재 가능 — 바닥 길이 ${Math.round(usedLen)}cm / ${TL}cm 사용 (여유 ${Math.round(TL - usedLen)}cm)</div>`;
+    verdict = `<div class="verdict ok">✅ 전량 적재 가능 — 바닥 길이 ${Math.round(usedLen)}cm / ${TL}cm 사용 (여유 ${Math.round(remainLen)}cm)</div>`;
   }
 
   const rows = results.map(r => {
     if (!r.place.fit) return [itemLabel(r.it), '❌ ' + r.place.reason];
     const p = r.place;
-    let txt = `폭 ${p.across}줄 × ${p.layers}단 × 길이 ${p.cols}열 → 바닥 ${Math.round(p.usedLen)}cm`;
+    let txt = `폭 ${p.across}줄 × ${p.layers}단 × 길이 ${r.usedCols}열 → 바닥 ${Math.round(r.usedLen)}cm`;
+    if (r.left > 0) txt = `<b style="color:var(--red)">${r.loaded}개 적재 / ${r.left}개 못 실음</b> · ` + txt;
     if (p.wastedH >= 30 && p.wastedH < r.it.h) txt += ` · 위 ${Math.round(p.wastedH)}cm는 활용 불가`;
     return [itemLabel(r.it), txt];
   });
   rows.push(['바닥 길이 합계', `${Math.round(usedLen)}cm / ${TL}cm (${Math.min(999, lenRate).toFixed(0)}%)`]);
+  rows.push(['실은 화물 부피', `${loadedCbm.toFixed(2)} CBM / 적재함 ${(TL * TW * TH / 1e6).toFixed(2)} CBM`]);
+  rows.push(['남은 공간', remainLen >= 1
+    ? `길이 ${Math.round(remainLen)} × 폭 ${TW} × 높이 ${TH}cm = <b>${remainCbm.toFixed(2)} CBM</b>`
+    : '없음']);
   if (totalKg) rows.push(['총중량', `${totalKg.toFixed(0)}kg / 최대 ${payload}kg`]);
 
   $('#cargo-output').innerHTML = verdict
     + `<div class="gauge"><div style="width:${Math.min(100, lenRate)}%"></div></div>`
-    + cargoDiagramSvg(results, TL, TW)
+    + cargoDiagramSvg(results, TL, TW, TH)
     + '<table class="result-table">' + rows.map(r => `<tr><td>${esc(r[0])}</td><td>${r[1]}</td></tr>`).join('') + '</table>'
     + `<p class="fine-print top8">💡 화물별로 구간을 나눠 싣는 기준의 근사 계산입니다. 하차 순서가 늦은 짐부터 안쪽에 실으세요. 파레트 위에 박스를 겹쳐 실을 수 있으면 실제로는 더 여유가 생깁니다.</p>`;
   $('#cargo-result').classList.remove('hidden');
