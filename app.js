@@ -180,9 +180,15 @@ async function addStopsFromInput() {
   $('#stops-input').value = '';
   const defaultWork = parseInt($('#default-work').value, 10);
 
+  // 일정 버튼이 선택돼 있으면 직접 입력한 배송지(기본 하차)에도 하차일을 적용
+  const dates = scheduleDates(manualSched);
   const pending = lines.map(label => ({
     id: uid(), label, lat: null, lng: null, type: '하차', workMin: defaultWork, status: 'pending',
+    schedule: manualSched || '', visitDate: dates.unload,
   }));
+  if (pending.some(isFutureStop)) {
+    toast(`📅 ${manualSched} — 하차일(${fmtDateK(dates.unload)})이 내일 이후라 오늘 경로에서 제외됩니다`, 4500);
+  }
   state.stops.push(...pending);
   renderStops();
   await geocodePending(pending);
@@ -211,10 +217,22 @@ async function geocodePending(pending) {
 let smsParsed = [];
 let smsMeta = { schedule: null, items: [] };
 
+// 일정 미리 선택: 문자에 일정 표기가 없을 때 이 값을 적용한다 (당상내착이 흔해서 버튼으로 제공)
+let manualSched = '';
+const SCHED_DETAILS = { '당상당착': '오늘 상차 → 오늘 하차', '당상내착': '오늘 상차 → 내일 하차' };
+$$('#sched-picker [data-sched]').forEach(b => b.addEventListener('click', () => {
+  manualSched = b.dataset.sched;
+  $$('#sched-picker [data-sched]').forEach(x => x.classList.toggle('active', x === b));
+  if (manualSched) toast(`📅 ${manualSched} — 문자에 일정 표기가 없으면 이 일정으로 적용합니다`);
+}));
+
 $('#btn-parse-sms').addEventListener('click', () => {
   const text = $('#sms-input').value.trim();
   if (!text) { toast('받은 문자를 붙여넣어 주세요'); return; }
   const full = SmsParser.parseFull(text);
+  if (!full.schedule && manualSched) {
+    full.schedule = { label: manualSched, detail: SCHED_DETAILS[manualSched] + ' · 직접 선택' };
+  }
   smsParsed = full.stops;
   smsMeta = { schedule: full.schedule, items: full.items };
   if (!smsParsed.length) {
