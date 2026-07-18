@@ -175,8 +175,20 @@ $('#btn-clear-stops').addEventListener('click', () => {
 });
 
 async function addStopsFromInput() {
-  const lines = $('#stops-input').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const raw = $('#stops-input').value;
+  const lines = raw.split('\n').map(s => s.trim()).filter(Boolean);
   if (!lines.length) { toast('주소를 입력해 주세요'); return; }
+
+  // 배차 문자를 통째로 붙여넣은 것 같으면 (주소가 아닌 줄이 여럿) 문자 자동 인식으로 넘긴다
+  const nonAddr = lines.filter(l => !SmsParser.looksLikeAddress(l));
+  if (nonAddr.length >= 2 || (nonAddr.length >= 1 && lines.length >= 4)) {
+    $('#stops-input').value = '';
+    $('#sms-input').value = raw;
+    $('#btn-parse-sms').click();
+    $('#sms-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast('💬 배차 문자로 보여 자동 인식으로 전환했습니다. 내용을 확인하고 추가를 누르세요.', 5000);
+    return;
+  }
   $('#stops-input').value = '';
   const defaultWork = parseInt($('#default-work').value, 10);
 
@@ -1321,9 +1333,24 @@ function initCargo() {
   ['#truck-l', '#truck-w', '#truck-h'].forEach(sel => $(sel).addEventListener('input', updateTruckCbm));
   loadItems();
   renderCargoItems();
+
+  // 박스/파레트 선택 버튼 — 파레트로 바꾸면 표준 규격(110×110)을 기본값으로 채워준다
+  let itemKind = 'box';
+  const KIND_DEFAULTS = { box: { w: 40, d: 30, h: 30 }, plt: { w: 110, d: 110, h: 100 } };
+  $$('#item-kind-picker [data-kind]').forEach(b => b.addEventListener('click', () => {
+    const prevDefaults = KIND_DEFAULTS[itemKind];
+    itemKind = b.dataset.kind;
+    $$('#item-kind-picker [data-kind]').forEach(x => x.classList.toggle('active', x === b));
+    // 사용자가 치수를 건드리지 않았을 때만 기본값 교체
+    if (+$('#item-w').value === prevDefaults.w && +$('#item-d').value === prevDefaults.d && +$('#item-h').value === prevDefaults.h) {
+      const nd = KIND_DEFAULTS[itemKind];
+      $('#item-w').value = nd.w; $('#item-d').value = nd.d; $('#item-h').value = nd.h;
+    }
+  }));
+
   $('#btn-add-item').addEventListener('click', () => {
     const it = {
-      kind: $('#item-kind').value,
+      kind: itemKind,
       w: parseFloat($('#item-w').value), d: parseFloat($('#item-d').value), h: parseFloat($('#item-h').value),
       count: parseInt($('#item-count').value, 10),
       totalKg: parseFloat($('#item-weight').value) || 0,

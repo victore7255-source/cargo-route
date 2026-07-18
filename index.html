@@ -212,15 +212,15 @@
     <div class="card">
       <h2 class="card-title">📦 화물 목록 <span class="hint">(문자 붙여넣기 시 자동 수집 · 직접 추가 가능)</span></h2>
       <ul class="stop-list" id="cargo-item-list"></ul>
-      <div class="grid2 top8">
-        <label class="field"><span class="field-label">종류</span>
-          <select id="item-kind" class="input">
-            <option value="box">박스</option>
-            <option value="plt">파레트</option>
-          </select></label>
-        <label class="field"><span class="field-label">수량(개)</span>
-          <input type="number" id="item-count" class="input" min="1" value="1"></label>
+      <div class="field top8">
+        <span class="field-label">종류</span>
+        <div class="row gap" id="item-kind-picker">
+          <button class="chip kind active" data-kind="box">📦 박스</button>
+          <button class="chip kind" data-kind="plt">🟫 파레트</button>
+        </div>
       </div>
+      <label class="field top8"><span class="field-label">수량(개)</span>
+        <input type="number" id="item-count" class="input" min="1" value="1"></label>
       <div class="grid3 top8">
         <label class="field"><span class="field-label">가로(cm)</span>
           <input type="number" id="item-w" class="input" min="1" value="40"></label>

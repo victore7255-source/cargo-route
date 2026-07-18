@@ -461,3 +461,4 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 }
 .chip.active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
 .badge.inline { padding: 2px 8px; font-size: 11px; }
+.chip.kind { flex: 1; padding: 12px 8px; font-size: 14.5px; text-align: center; border-radius: 12px; }

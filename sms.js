@@ -23,7 +23,7 @@ const SmsParser = (() => {
   const CARGO_RE = /(파레트|팔레트|빠레트|PLT|plt|박스|BOX|box|카톤|톤\b|kg|KG|Kg|㎏|수량|중량|품명|품목|화물\s*[:：]|냉동|냉장|목재|철재|기계|자재)/;
 
   // 특이사항: 기사에게 하는 요청·주의 문구가 든 줄을 찾는다
-  const NOTE_RE = /(꼭|반드시|필수|주의|엄수|금지|파손|직접|수작업|손하차|손상차|지게차|리프트|호이스트|착불|선불|현불|원본|서류|송장|거래명세|안전화|안전조끼|늦지\s*않|미리\s*전화|전화\s*주|연락\s*주|카톡|문자\s*주|보내\s*주|주세요|주십시오|바랍니다|부탁)/;
+  const NOTE_RE = /(꼭|반드시|필수|주의|엄수|금지|파손|직접|수작업|손하차|손상차|지게차|리프트|호이스트|착불|선불|현불|원본|서류|송장|거래명세|안전화|안전조끼|납품|전달|서명|늦지\s*않|미리\s*전화|전화\s*주|연락\s*주|카톡|문자\s*주|보내\s*주|주세요|주십시오|바랍니다|부탁)/;
 
   function stripLabel(line) {
     // "주소 : ..." / "[상차지] ..." / "- ..." 같은 앞머리 제거
@@ -66,10 +66,11 @@ const SmsParser = (() => {
       const line = stripLabel(raw);
       if (!line) continue;
 
-      // 인수증 관련 줄: 여기 있는 번호는 인수증 보낼 번호
+      // 인수증 관련 줄: 번호가 있으면 인수증 보낼 번호, 없으면 요청 문구는 특이사항으로
       if (POD_KEYS.some(k => line.includes(k))) {
         const p = findPhones(line);
         if (p.length) info.podPhone = info.podPhone || p[0];
+        else if (NOTE_RE.test(line)) info.notes.push(line);
         continue;
       }
 
@@ -118,13 +119,18 @@ const SmsParser = (() => {
 
   /** 줄이 상차/하차 구역의 시작인지 판정. 시작이면 타입과 남은 내용(같은 줄 뒷부분)을 돌려준다 */
   function sectionStart(line) {
+    // "* ..." 로 시작하는 줄과 인수증 관련 줄은 요청사항이지 구역 제목이 아니다
+    if (/^\s*\*/.test(line) || POD_KEYS.some(k => line.includes(k))) return null;
     // "지게차 하차 필수" 같은 문구를 구역 제목으로 오인하지 않도록,
     // 앞머리 기호를 뗀 뒤 키워드가 사실상 줄 맨 앞에 있을 때만 구역 시작으로 본다
-    const s = line.replace(/^[\s\d.\-•*▶■□○●◆★☆·=~\[(（【]+/, '');
+    const s = line.replace(/^[\s\d.\-•▶■□○●◆★☆·=~\[(（【]+/, '');
     const check = (k) => {
       const idx = s.indexOf(k);
       if (idx < 0 || idx > 1) return false;
-      return !(idx > 0 && /[가-힣]/.test(s[idx - 1]));
+      if (idx > 0 && /[가-힣]/.test(s[idx - 1])) return false;
+      // "상차시간: 17시" 처럼 키워드 뒤에 다른 낱말이 이어지면 구역 제목이 아니다
+      const after = s[idx + k.length];
+      return !(after && /[가-힣]/.test(after));
     };
     for (const k of LOAD_KEYS) {
       if (check(k)) return { type: '상차', rest: s.slice(s.indexOf(k) + k.length) };
@@ -164,10 +170,14 @@ const SmsParser = (() => {
     let stops = [];
     if (sections.length) {
       stops = sections.map(s => parseSection(s.type, s.lines)).filter(s => s.address);
-      // 구역은 있는데 주소를 못 찾았으면 헤더의 주소라도 써 본다
+      // 구역은 있는데 주소를 하나도 못 찾았으면 문자 전체를 주소 스캔으로 다시 읽는다
       if (!stops.length) {
-        const h = parseSection('하차', header);
-        if (h.address) stops.push(h);
+        stops = scanAddresses(lines);
+        guessTypes(stops);
+      } else if (!stops.some(s => s.type === '상차')) {
+        // 상차지 주소가 구역 밖(문자 맨 위)에 적힌 문자: 헤더의 주소를 상차지로 복원
+        const h = parseSection('상차', header);
+        if (h.address) stops.unshift(h);
       }
       // 헤더의 화물 정보를 상차지에 보충
       const headerInfo = parseSection('상차', header);
@@ -189,58 +199,70 @@ const SmsParser = (() => {
         }
       }
       // 헤더(첫 구역 이전)의 특이사항은 첫 지점에 붙인다
-      const headerNotes = header.filter(l =>
-        NOTE_RE.test(l) && !POD_KEYS.some(k => l.includes(k)) && !cleanAddress(stripLabel(l)));
+      const headerNotes = header
+        .filter(l => NOTE_RE.test(l) && !POD_KEYS.some(k => l.includes(k)) && !cleanAddress(stripLabel(l)))
+        .map(stripLabel);
       if (headerNotes.length && stops[0]) {
         stops[0].notes = [...new Set([...(stops[0].notes || []), ...headerNotes])].slice(0, 5);
       }
     } else {
-      // 2) 키워드가 없는 문자: 주소로 보이는 줄마다 하차지 하나
-      let pending = null;
-      for (const line of lines) {
-        const clean = stripLabel(line);
-        const ca = cleanAddress(clean);
-        if (ca) {
-          if (pending) stops.push(pending);
-          const p = findPhones(clean);
-          pending = {
-            type: '하차', address: ca.addr,
-            phone: p[0] || '', contactName: '', cargo: '', podPhone: '', notes: [],
-          };
-          const nm = clean.match(NAME_RE);
-          const nm2 = nm ? null : clean.match(NAME_RE2);
-          if (nm) pending.contactName = nm[2];
-          else if (nm2) pending.contactName = nm2[1] + nm2[2];
-          const tailCargo = ca.tail.replace(PHONE_RE, '').replace(/[()（）]/g, '').replace(/연락처|문의/g, '').trim();
-          if (tailCargo && CARGO_RE.test(tailCargo)) pending.cargo = tailCargo;
-        } else if (pending) {
-          // 인수증 관련 줄의 번호는 연락처가 아니라 인수증 보낼 번호
-          if (POD_KEYS.some(k => clean.includes(k))) {
-            const pp = findPhones(clean);
-            if (pp.length && !pending.podPhone) pending.podPhone = pp[0];
-            continue;
-          }
-          const p = findPhones(clean);
-          if (p.length && !pending.phone) pending.phone = p[0];
-          const nm = clean.match(NAME_RE);
-          const nm2 = nm ? null : clean.match(NAME_RE2);
-          if (nm && !pending.contactName) pending.contactName = nm[2];
-          else if (nm2 && !pending.contactName) pending.contactName = nm2[1] + nm2[2];
-          if (CARGO_RE.test(clean) && !pending.cargo && !PHONE_RE.test(clean)) pending.cargo = clean;
-          if (NOTE_RE.test(clean) && !POD_KEYS.some(k => clean.includes(k))) {
-            pending.notes = [...new Set([...pending.notes, clean])].slice(0, 5);
-          }
-        }
-      }
-      if (pending) stops.push(pending);
-
-      // 상차/하차 표기가 없는 문자: 관례상 맨 위 주소 = 상차지, 아래 = 하차지로 추정
-      if (stops.length >= 2) {
-        stops[0].type = '상차';
-        stops.forEach(s => { s.guessed = true; });
-      }
+      // 2) 키워드가 없는 문자: 주소로 보이는 줄마다 지점 하나
+      stops = scanAddresses(lines);
+      guessTypes(stops);
     }
 
+    return stops;
+  }
+
+  /** 상차/하차 표기가 없을 때: 관례상 맨 위 주소 = 상차지, 아래 = 하차지로 추정 */
+  function guessTypes(stops) {
+    if (stops.length >= 2) {
+      stops[0].type = '상차';
+      stops.forEach(s => { s.guessed = true; });
+    }
+  }
+
+  /** 구역 키워드 없이 줄들을 훑어 주소마다 지점 하나씩 만든다 */
+  function scanAddresses(lines) {
+    const stops = [];
+    let pending = null;
+    for (const line of lines) {
+      const clean = stripLabel(line);
+      const ca = cleanAddress(clean);
+      if (ca) {
+        if (pending) stops.push(pending);
+        const p = findPhones(clean);
+        pending = {
+          type: '하차', address: ca.addr,
+          phone: p[0] || '', contactName: '', cargo: '', podPhone: '', notes: [],
+        };
+        const nm = clean.match(NAME_RE);
+        const nm2 = nm ? null : clean.match(NAME_RE2);
+        if (nm) pending.contactName = nm[2];
+        else if (nm2) pending.contactName = nm2[1] + nm2[2];
+        const tailCargo = ca.tail.replace(PHONE_RE, '').replace(/[()（）]/g, '').replace(/연락처|문의/g, '').trim();
+        if (tailCargo && CARGO_RE.test(tailCargo)) pending.cargo = tailCargo;
+      } else if (pending) {
+        // 인수증 관련 줄의 번호는 연락처가 아니라 인수증 보낼 번호. 번호가 없으면 특이사항으로
+        if (POD_KEYS.some(k => clean.includes(k))) {
+          const pp = findPhones(clean);
+          if (pp.length && !pending.podPhone) pending.podPhone = pp[0];
+          else if (!pp.length && NOTE_RE.test(clean)) pending.notes = [...new Set([...pending.notes, clean])].slice(0, 5);
+          continue;
+        }
+        const p = findPhones(clean);
+        if (p.length && !pending.phone) pending.phone = p[0];
+        const nm = clean.match(NAME_RE);
+        const nm2 = nm ? null : clean.match(NAME_RE2);
+        if (nm && !pending.contactName) pending.contactName = nm[2];
+        else if (nm2 && !pending.contactName) pending.contactName = nm2[1] + nm2[2];
+        if (CARGO_RE.test(clean) && !pending.cargo && !PHONE_RE.test(clean)) pending.cargo = clean;
+        if (NOTE_RE.test(clean) && !POD_KEYS.some(k => clean.includes(k))) {
+          pending.notes = [...new Set([...pending.notes, clean])].slice(0, 5);
+        }
+      }
+    }
+    if (pending) stops.push(pending);
     return stops;
   }
 
@@ -304,5 +326,10 @@ const SmsParser = (() => {
     return { stops: parse(text), schedule: detectSchedule(text), items: parseItems(text) };
   }
 
-  return { parse, parseFull };
+  /** 한 줄이 주소로 보이는지 (배송지 직접 입력과 배차 문자를 구분할 때 사용) */
+  function looksLikeAddress(line) {
+    return !!cleanAddress(stripLabel(String(line)));
+  }
+
+  return { parse, parseFull, looksLikeAddress };
 })();
