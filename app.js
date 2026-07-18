@@ -1576,7 +1576,10 @@ function currentTheme() {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 function applyThemeIcon() {
-  $('#btn-theme').textContent = currentTheme() === 'dark' ? '☀️' : '🌙';
+  // 아이콘만으로는 무슨 버튼인지 알기 어려워 글자를 함께 보여준다
+  const dark = currentTheme() === 'dark';
+  $('#btn-theme').textContent = dark ? '☀️ 밝게' : '🌙 어둡게';
+  $('#btn-theme').title = dark ? '밝은 화면으로 전환' : '어두운 화면으로 전환';
 }
 $('#btn-theme').addEventListener('click', () => {
   const next = currentTheme() === 'dark' ? 'light' : 'dark';

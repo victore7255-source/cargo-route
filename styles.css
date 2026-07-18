@@ -462,3 +462,11 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 .chip.active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
 .badge.inline { padding: 2px 8px; font-size: 11px; }
 .chip.kind { flex: 1; padding: 12px 8px; font-size: 14.5px; text-align: center; border-radius: 12px; }
+
+/* ── 밝게/어둡게 전환 버튼: 아이콘 + 글자 ── */
+.theme-toggle {
+  width: auto; padding: 0 13px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 13px; font-weight: 700; letter-spacing: -0.02em;
+  white-space: nowrap;
+}
