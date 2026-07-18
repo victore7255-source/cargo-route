@@ -334,6 +334,13 @@ async function addSmsStops() {
   await geocodePending(pending);
 }
 
+/** 지오코딩 결과의 긴 전체 주소를 화면용으로 짧게 줄인다 */
+function shortDisplay(d) {
+  if (!d) return '';
+  const s = String(d).split(',').map(p => p.trim()).slice(0, 3).join(' ');
+  return s.length > 42 ? s.slice(0, 42) + '…' : s;
+}
+
 function telLink(phone) { return 'tel:' + String(phone).replace(/[^0-9+]/g, ''); }
 function smsLink(phone, body) {
   const n = String(phone).replace(/[^0-9+]/g, '');
@@ -362,14 +369,14 @@ function renderStops() {
     ].filter(Boolean).map(esc).join(' · ');
     const notes = (s.notes && s.notes.length)
       ? `<br>⚠️ <span class="note">${s.notes.map(esc).join(' / ')}</span>` : '';
+    // 날짜 배지는 오른쪽이 아니라 주소 아래 줄에 넣는다 (오른쪽에 몰리면 주소 칸이 좁아짐)
     const dateBadge = s.visitDate
-      ? `<button class="badge sched" data-act="date" data-i="${i}" title="눌러서 방문 날짜 변경">📅 ${fmtDateK(s.visitDate)}</button>` : '';
+      ? `<button class="badge sched inline" data-act="date" data-i="${i}" title="눌러서 방문 날짜 변경">📅 ${fmtDateK(s.visitDate)}</button> ` : '';
     li.innerHTML = `
       <span>${statusIcon}</span>
       <span class="label">${esc(s.label)}
-        <span class="sub">${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(s.display || '')}${info ? '<br>' + info : ''}${notes}</span>
+        <span class="sub">${dateBadge}${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(shortDisplay(s.display))}${info ? '<br>' + info : ''}${notes}</span>
       </span>
-      ${dateBadge}
       <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-act="type" data-i="${i}">${s.type}</button>
       <button class="icon-btn" data-act="del" data-i="${i}" title="삭제">✕</button>`;
     return li;
@@ -384,7 +391,8 @@ function renderStops() {
     future.forEach(x => ul.appendChild(makeLi(x, true)));
   }
 
-  ul.querySelectorAll('[data-act="date"]').forEach(b => b.addEventListener('click', () => {
+  ul.querySelectorAll('[data-act="date"]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation(); // 주소 수정(오류 항목) 클릭과 겹치지 않게
     const s = state.stops[+b.dataset.i];
     const input = prompt('방문 날짜를 입력하세요.\n예) 2026-07-21 또는 7/21 — 오늘 경로에 넣으려면 "오늘"', s.visitDate || '');
     if (input == null) return;
@@ -710,7 +718,7 @@ function naviButtonsHtml(dest) {
   if (!links) {
     return `<div class="fine-print" style="grid-column:1/-1">⚠️ 이 목적지의 좌표가 확인되지 않아 내비를 실행할 수 없습니다. 경로 탭에서 주소를 수정한 뒤 경로를 다시 계산해 주세요.</div>`;
   }
-  const sub = dest.display && dest.display !== dest.label ? `<br><span class="hint">확인된 위치: ${esc(dest.display)}</span>` : '';
+  const sub = dest.display && dest.display !== dest.label ? `<br><span class="hint">확인된 위치: ${esc(shortDisplay(dest.display))}</span>` : '';
   return `
     <div class="fine-print" style="grid-column:1/-1;margin:0">🎯 안내 목적지: <b>${esc(dest.label)}</b>${sub}</div>
     <a class="navi-btn tmap" href="${links.tmap}">TMAP<br>실행</a>

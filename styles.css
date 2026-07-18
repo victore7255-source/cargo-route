@@ -460,3 +460,4 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   cursor: pointer; font-family: inherit;
 }
 .chip.active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+.badge.inline { padding: 2px 8px; font-size: 11px; }
