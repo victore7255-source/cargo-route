@@ -1357,6 +1357,11 @@ function initCargo() {
     };
     if (!(it.w > 0 && it.d > 0 && it.h > 0 && it.count > 0)) { toast('화물 치수와 수량을 입력해 주세요'); return; }
     addCargoItems([it], '직접 입력');
+    // 다음 화물을 바로 입력할 수 있게 입력란을 기본값으로 되돌린다
+    const nd = KIND_DEFAULTS[itemKind];
+    $('#item-count').value = 1;
+    $('#item-w').value = nd.w; $('#item-d').value = nd.d; $('#item-h').value = nd.h;
+    $('#item-weight').value = '';
   });
   $('#btn-clear-items').addEventListener('click', () => {
     if (!cargoItems.length) return;
