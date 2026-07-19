@@ -1334,18 +1334,11 @@ function initCargo() {
   loadItems();
   renderCargoItems();
 
-  // 박스/파레트 선택 버튼 — 파레트로 바꾸면 표준 규격(110×110)을 기본값으로 채워준다
+  // 박스/파레트 선택 버튼
   let itemKind = 'box';
-  const KIND_DEFAULTS = { box: { w: 40, d: 30, h: 30 }, plt: { w: 110, d: 110, h: 100 } };
   $$('#item-kind-picker [data-kind]').forEach(b => b.addEventListener('click', () => {
-    const prevDefaults = KIND_DEFAULTS[itemKind];
     itemKind = b.dataset.kind;
     $$('#item-kind-picker [data-kind]').forEach(x => x.classList.toggle('active', x === b));
-    // 사용자가 치수를 건드리지 않았을 때만 기본값 교체
-    if (+$('#item-w').value === prevDefaults.w && +$('#item-d').value === prevDefaults.d && +$('#item-h').value === prevDefaults.h) {
-      const nd = KIND_DEFAULTS[itemKind];
-      $('#item-w').value = nd.w; $('#item-d').value = nd.d; $('#item-h').value = nd.h;
-    }
   }));
 
   $('#btn-add-item').addEventListener('click', () => {
@@ -1357,12 +1350,14 @@ function initCargo() {
     };
     if (!(it.w > 0 && it.d > 0 && it.h > 0 && it.count > 0)) { toast('화물 치수와 수량을 입력해 주세요'); return; }
     addCargoItems([it], '직접 입력');
-    // 다음 화물을 바로 입력할 수 있게 입력란을 기본값으로 되돌린다
-    const nd = KIND_DEFAULTS[itemKind];
-    $('#item-count').value = 1;
-    $('#item-w').value = nd.w; $('#item-d').value = nd.d; $('#item-h').value = nd.h;
-    $('#item-weight').value = '';
+    // 다음 화물을 지우는 과정 없이 바로 입력할 수 있게 전부 비운다
+    ['#item-count', '#item-w', '#item-d', '#item-h', '#item-weight'].forEach(sel => { $(sel).value = ''; });
   });
+
+  // 숫자칸은 탭하면 기존 값이 전체 선택되어 지우지 않고 바로 덮어쓸 수 있다
+  $$('input[type="number"]').forEach(inp => inp.addEventListener('focus', () => {
+    setTimeout(() => { try { inp.select(); } catch (e) { /* ignore */ } }, 0);
+  }));
   $('#btn-clear-items').addEventListener('click', () => {
     if (!cargoItems.length) return;
     if (!confirm('화물 목록을 모두 비울까요?')) return;
