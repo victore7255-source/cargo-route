@@ -11,6 +11,7 @@
   <meta property="og:description" content="배송지를 붙여넣으면 AI가 가장 빠른 방문 순서를 계산합니다. 내비 연동·적재 계산·EV 충전 관리까지.">
   <meta property="og:image" content="og-링크미리보기.png">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -48,6 +49,19 @@
 
   <!-- ══════════════ 경로 탭 ══════════════ -->
   <section class="panel active" id="panel-route">
+
+    <div class="card install-card hidden" id="install-card">
+      <div class="row gap">
+        <span style="font-size:28px">📲</span>
+        <div class="grow">
+          <b>앱으로 설치해서 쓰세요</b>
+          <div class="hint">홈 화면에 추가하면 주소 입력 없이 앱처럼 바로 열립니다</div>
+        </div>
+        <button class="icon-btn" id="btn-install-close" title="다시 보지 않기">✕</button>
+      </div>
+      <button class="btn primary full top8" id="btn-install">📲 홈 화면에 설치</button>
+      <div id="install-guide" class="fine-print hidden"></div>
+    </div>
 
     <div class="card">
       <h2 class="card-title">📍 출발지</h2>

@@ -470,3 +470,6 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   font-size: 13px; font-weight: 700; letter-spacing: -0.02em;
   white-space: nowrap;
 }
+
+/* ── 홈 화면 설치 카드 ── */
+.install-card { border-color: var(--brand); }

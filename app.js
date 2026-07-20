@@ -1569,6 +1569,58 @@ function seedDemo() {
   state.trip = null;
 }
 
+// ─────────── 홈 화면 설치 (PWA) ───────────
+// 안드로이드 크롬: beforeinstallprompt를 받아 버튼 하나로 설치.
+// 아이폰 사파리: 자동 설치 API가 없어 공유 → 홈 화면에 추가 방법을 안내한다.
+let deferredInstall = null;
+const INSTALL_HIDE_KEY = 'cargo-install-hide';
+
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstall = e;
+});
+window.addEventListener('appinstalled', () => {
+  $('#install-card').classList.add('hidden');
+  try { localStorage.setItem(INSTALL_HIDE_KEY, '1'); } catch (e) { /* ignore */ }
+  toast('📲 설치 완료! 홈 화면에서 열어보세요');
+});
+
+function initInstall() {
+  if (isStandalone() || localStorage.getItem(INSTALL_HIDE_KEY)) return; // 이미 설치했거나 닫은 경우
+  const card = $('#install-card');
+  card.classList.remove('hidden');
+
+  $('#btn-install-close').addEventListener('click', () => {
+    card.classList.add('hidden');
+    try { localStorage.setItem(INSTALL_HIDE_KEY, '1'); } catch (e) { /* ignore */ }
+  });
+
+  $('#btn-install').addEventListener('click', async () => {
+    // 안드로이드: 설치 창을 바로 띄운다
+    if (deferredInstall) {
+      deferredInstall.prompt();
+      const choice = await deferredInstall.userChoice.catch(() => null);
+      deferredInstall = null;
+      if (choice && choice.outcome === 'accepted') {
+        card.classList.add('hidden');
+        try { localStorage.setItem(INSTALL_HIDE_KEY, '1'); } catch (e) { /* ignore */ }
+      }
+      return;
+    }
+    // 아이폰 등 자동 설치가 안 되는 브라우저: 방법 안내
+    const g = $('#install-guide');
+    const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    g.innerHTML = ios
+      ? '아이폰은 애플 정책상 버튼 설치가 안 됩니다.<br>사파리 아래 <b>공유 버튼(⬆️)</b> → <b>"홈 화면에 추가"</b>를 눌러주세요.'
+      : '브라우저 메뉴(⋮)를 열고 <b>"홈 화면에 추가"</b> 또는 <b>"앱 설치"</b>를 눌러주세요.';
+    g.classList.remove('hidden');
+  });
+}
+
 // ─────────── 테마 전환 ───────────
 function currentTheme() {
   const set = document.documentElement.dataset.theme;
@@ -1600,6 +1652,7 @@ function init() {
   });
   initEv();
   initCargo();
+  initInstall();
 
   if (state.origin) {
     $('#origin-input').value = state.origin.label;
