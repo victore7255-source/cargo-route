@@ -116,7 +116,6 @@ function switchTab(name) {
   if (name === 'history') renderHistory();
   if (name === 'drive') renderDrive();
   if (name === 'settle') renderSettle();
-  if (name === 'ev') renderEvIfReady();
   if (name === 'route' && map) setTimeout(() => map.invalidateSize(), 100);
 }
 
@@ -616,7 +615,6 @@ function renderResult() {
   renderMap();
   renderAiTips();
   renderNaviButtons($('#navi-buttons'), 0);
-  renderEvIfReady();
 }
 
 // ─────────── 지도 ───────────
@@ -686,14 +684,6 @@ async function renderAiTips() {
   const unloads = state.stops.filter(s => s.type === '하차').length;
   if (loads && unloads) {
     tips.push({ icon: '📦', text: `상차 ${loads}곳 · 하차 ${unloads}곳 혼적 운행입니다. 상차지에서 하차 순서 역순으로 싣으면(나중에 내릴 짐을 안쪽에) 하차가 빨라집니다.` });
-  }
-
-  // EV 잔량 체크
-  const ev = loadEvSettings();
-  if (ev && ev.range > 0) {
-    if (ev.range < (res.distance / 1000) * 1.15) {
-      tips.push({ icon: '🔋', text: `계기판 주행가능거리 약 ${Math.round(ev.range)}km — 이번 경로(${fmtKm(res.distance)})에 충전이 필요할 수 있습니다. EV 탭에서 충전 계획을 확인하세요.` });
-    }
   }
 
   ul.innerHTML = tips.map(t => `<li data-icon="${t.icon}">${esc(t.text)}</li>`).join('');
@@ -1041,8 +1031,14 @@ $('#btn-save-trip').addEventListener('click', () => {
   state.trip = null;
   saveState();
   renderDrive();
-  switchTab('history');
-  toast('💾 운행 기록을 저장했습니다');
+  // 운행이 끝났으니 바로 정산(운송비)에 등록할지 물어본다
+  if (confirm('운행 기록을 저장했습니다.\n이 운행의 운송비를 정산에 등록할까요? (업체·금액 입력)')) {
+    switchTab('settle');
+    importTripToSettle(record);
+  } else {
+    switchTab('history');
+    toast('💾 운행 기록을 저장했습니다');
+  }
 });
 
 $('#btn-discard-trip').addEventListener('click', () => {
@@ -1105,116 +1101,6 @@ $('#btn-export-history').addEventListener('click', () => {
   a.click();
   URL.revokeObjectURL(a.href);
 });
-
-// ─────────── EV ───────────
-const EV_KEY = 'cargo-ev-v2';
-
-function loadEvSettings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(EV_KEY) || 'null');
-    if (saved && saved.range > 0) return saved;
-    // 구버전(배터리용량·전비 방식) 데이터 이전
-    const old = JSON.parse(localStorage.getItem('cargo-ev-v1') || 'null');
-    if (old && old.capacity && old.efficiency && old.battery) {
-      return { range: Math.round(old.capacity * (old.battery / 100) * old.efficiency), battery: old.battery };
-    }
-    return null;
-  } catch (e) { return null; }
-}
-function saveEvSettings() {
-  localStorage.setItem(EV_KEY, JSON.stringify({
-    range: parseFloat($('#ev-range').value) || 0,
-    battery: parseFloat($('#ev-battery').value) || null,
-  }));
-}
-
-function initEv() {
-  const saved = loadEvSettings();
-  if (saved) {
-    $('#ev-range').value = saved.range || '';
-    $('#ev-battery').value = saved.battery || '';
-  }
-}
-
-$('#btn-calc-ev').addEventListener('click', () => {
-  if (!(parseFloat($('#ev-range').value) > 0)) {
-    toast('계기판에 표시된 주행가능거리(km)를 입력해 주세요');
-    return;
-  }
-  saveEvSettings();
-  renderEv();
-});
-
-function renderEvIfReady() {
-  const ev = loadEvSettings();
-  if (ev && ev.range > 0 && state.result) {
-    $('#ev-range').value = ev.range;
-    if (ev.battery) $('#ev-battery').value = ev.battery;
-    renderEv();
-  }
-}
-
-function renderEv() {
-  const range = parseFloat($('#ev-range').value) || 0;
-  let battery = parseFloat($('#ev-battery').value) || null;
-  if (battery != null) battery = Math.min(100, Math.max(1, battery));
-  const SAFE = 0.85; // 계기판 표시치의 오차·우회를 감안한 15% 여유
-
-  const rows = [
-    ['현재 주행가능거리 (계기판)', `${Math.round(range)}km`],
-    ['안전 주행거리 (15% 여유)', `약 ${Math.round(range * SAFE)}km`],
-  ];
-  if (battery) rows.push(['현재 배터리', `${battery}%`]);
-  let verdict = '';
-  let extraHtml = '';
-
-  if (state.result) {
-    const totalKm = state.result.distance / 1000;
-    const remainKm = range - totalKm;
-    // 계기판 거리는 현재 잔량 기준이므로, 경로만큼 달리면 그 비율만큼 배터리를 쓴다
-    const endPct = battery ? battery * (1 - totalKm / range) : null;
-    rows.push(['이번 경로 거리', fmtKm(state.result.distance)]);
-    rows.push(['완주 시 남는 거리', remainKm > 0 ? `약 ${Math.round(remainKm)}km` : '부족']);
-    if (endPct != null) rows.push(['도착 시 배터리 (예상)', endPct > 0 ? `약 ${Math.round(endPct)}%` : '방전']);
-
-    if (totalKm <= range * SAFE) {
-      verdict = `<div class="verdict ok">✅ 충전 없이 완주 가능 — 도착 후에도 약 ${Math.round(remainKm)}km 여유${endPct != null ? ` (배터리 약 ${Math.round(endPct)}%)` : ''}</div>`;
-    } else {
-      // 어느 지점에서 충전이 필요한지 계산
-      let cum = 0, chargeBeforeIdx = -1;
-      const safeKm = range * SAFE;
-      const stops = orderedStops();
-      for (let i = 0; i < state.result.legs.length; i++) {
-        cum += state.result.legs[i].distance / 1000;
-        if (cum > safeKm) { chargeBeforeIdx = i; break; }
-      }
-      const where = chargeBeforeIdx >= 0 && stops[chargeBeforeIdx]
-        ? `<b>${chargeBeforeIdx + 1}번째 목적지(${esc(stops[chargeBeforeIdx].label)})</b> 도착 전`
-        : '경로 후반부';
-      verdict = totalKm <= range
-        ? `<div class="verdict warn">⚠️ 아슬아슬하게 완주 가능 (여유 약 ${Math.round(remainKm)}km) — ${where} 충전을 권장합니다</div>`
-        : `<div class="verdict bad">🔴 충전 없이 완주 불가 (약 ${Math.round(-remainKm)}km 부족) — ${where} 반드시 충전하세요</div>`;
-
-      const chargePoint = chargeBeforeIdx > 0 && stops[chargeBeforeIdx - 1]
-        ? stops[chargeBeforeIdx - 1] : state.origin;
-      const q = encodeURIComponent('전기차충전소');
-      extraHtml += `
-        <div class="navi-grid top8">
-          <a class="navi-btn kakao" href="kakaomap://search?q=${q}&p=${chargePoint.lat},${chargePoint.lng}">카카오맵<br>충전소 검색</a>
-          <a class="navi-btn tmap" href="tmap://search?name=${q}">TMAP<br>충전소 검색</a>
-          <a class="navi-btn naver" href="nmap://search?query=${q}&appname=cargo.route.web">네이버<br>충전소 검색</a>
-        </div>
-        <p class="fine-print">충전 지점 근처(${esc(chargePoint.label || '출발지')})에서 급속충전소를 검색합니다. 충전 후 계기판의 주행가능거리를 다시 입력하고 [충전 계획 분석]을 누르면 재계산됩니다.</p>`;
-    }
-  } else {
-    verdict = '<div class="verdict warn">경로를 먼저 계산하면 이번 운행의 충전 필요 여부를 분석해 드립니다.</div>';
-  }
-
-  $('#ev-output').innerHTML = verdict
-    + '<table class="result-table">' + rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('') + '</table>'
-    + extraHtml;
-  $('#ev-result').classList.remove('hidden');
-}
 
 // ─────────── 적재 계산 ───────────
 const TRUCK_KEY = 'cargo-truck-v1';
@@ -1602,6 +1488,51 @@ function initSettle() {
   });
   $('#cal-prev').addEventListener('click', () => { shiftCalMonth(-1); });
   $('#cal-next').addEventListener('click', () => { shiftCalMonth(1); });
+  $('#btn-settle-import').addEventListener('click', toggleTripPicker);
+}
+
+// ── 운행 기록 → 정산 연동 ──
+/** 아직 정산에 등록되지 않은 운행 기록 목록 */
+function unlinkedTrips() {
+  const linked = new Set(Settle.all().map(r => r.fromTrip).filter(Boolean));
+  return getHistory().filter(h => !linked.has(h.id));
+}
+function toggleTripPicker() {
+  const box = $('#settle-trip-picker');
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  const trips = unlinkedTrips();
+  if (!trips.length) {
+    toast('가져올 운행 기록이 없습니다 (이미 모두 등록됐거나 저장된 운행이 없어요)');
+    return;
+  }
+  box.innerHTML = '<ul class="stop-list top8">'
+    + trips.map(h => {
+      const last = h.stops && h.stops.length ? h.stops[h.stops.length - 1].label : '';
+      const d = new Date(h.date);
+      return `<li class="stop-item" data-trip="${h.id}" style="cursor:pointer">
+        <span>🚛</span>
+        <span class="label">${esc(h.origin)}${last ? ' → ' + esc(last) : ''}
+          <span class="sub">${d.getMonth() + 1}/${d.getDate()} · ${h.stops.length}곳 · ${fmtKm(h.distance)}</span></span>
+        <span class="badge st-due">가져오기</span>
+      </li>`;
+    }).join('') + '</ul>';
+  box.classList.remove('hidden');
+  box.querySelectorAll('[data-trip]').forEach(li => li.addEventListener('click', () => {
+    const h = getHistory().find(x => x.id === li.dataset.trip);
+    if (h) importTripToSettle(h);
+  }));
+}
+function importTripToSettle(h) {
+  $('#settle-trip-picker').classList.add('hidden');
+  const last = h.stops && h.stops.length ? h.stops[h.stops.length - 1].label : '';
+  openSettleForm(null, {
+    origin: h.origin || '',
+    dest: last || '',
+    shipDate: (h.date || '').slice(0, 10),
+    memo: `운행기록 ${new Date(h.date).getMonth() + 1}/${new Date(h.date).getDate()}`,
+    fromTrip: h.id,
+  });
+  toast('🚛 운행 정보를 불러왔습니다. 업체명과 운송금액을 입력하세요.');
 }
 
 function shiftCalMonth(delta) {
@@ -1757,14 +1688,16 @@ function renderSettleCompanies() {
 
 // ── 추가/편집 폼 ──
 let settleEditId = null;
-function openSettleForm(id) {
+let settleFromTrip = null;
+function openSettleForm(id, prefill) {
   settleEditId = id;
-  const r = id ? Settle.get(id) : null;
+  const r = id ? Settle.get(id) : (prefill || null);
+  settleFromTrip = (id && Settle.get(id)) ? Settle.get(id).fromTrip : (prefill && prefill.fromTrip) || null;
   $('#settle-form-title').textContent = id ? '✏️ 운송 수정' : '＋ 운송 추가';
   $('#sf-company').value = r ? (r.company || '') : '';
   $('#sf-amount').value = r ? (r.amount || '') : '';
   $('#sf-pay').value = r ? (r.payMethod || Settle.PAY_METHODS[0]) : Settle.PAY_METHODS[0];
-  $('#sf-shipdate').value = r ? (r.shipDate || '') : Settle.today();
+  $('#sf-shipdate').value = r ? (r.shipDate || Settle.today()) : Settle.today();
   $('#sf-origin').value = r ? (r.origin || '') : '';
   $('#sf-dest').value = r ? (r.dest || '') : '';
   $('#sf-fee').value = r ? (r.fee || '') : '';
@@ -1809,6 +1742,7 @@ function saveSettleForm() {
     tax: !!$('#sf-tax').value,
     taxDate: $('#sf-tax').value ? $('#sf-taxdate').value : '',
     memo: $('#sf-memo').value.trim(),
+    fromTrip: settleFromTrip || undefined,
   };
   if (settleEditId) {
     const prev = Settle.get(settleEditId);
@@ -1928,7 +1862,6 @@ function init() {
   state.stops.forEach(s => {
     if (s.status === 'pending') s.status = (s.lat != null) ? 'ok' : 'error';
   });
-  initEv();
   initCargo();
   initSettle();
   initInstall();
