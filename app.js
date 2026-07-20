@@ -635,7 +635,7 @@ function renderMap() {
 
   const mk = (p, text, cls) => {
     const m = L.marker([p.lat, p.lng], {
-      icon: L.divIcon({ className: 'map-marker ' + cls, html: text, iconSize: [26, 26] }),
+      icon: L.divIcon({ className: 'map-marker ' + cls, html: text, iconSize: [38, 38], iconAnchor: [19, 19] }),
     }).addTo(map);
     mapLayers.push(m);
   };
