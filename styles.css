@@ -135,13 +135,13 @@ h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.03em; color: var(--in
   margin-right: max(14px, calc((100% - 640px) / 2));
 }
 .tab {
-  flex: 1; min-width: 0; padding: 9px 2px;
+  flex: 1; min-width: 0; padding: 9px 1px;
   background: none; border: none; border-radius: 999px;
   color: var(--ink-dim);
-  font-size: 13.5px; font-weight: 700; font-family: inherit;
-  letter-spacing: -0.02em;
+  font-size: 13px; font-weight: 700; font-family: inherit;
+  letter-spacing: -0.045em;
   cursor: pointer;
-  white-space: nowrap; overflow: hidden;
+  white-space: nowrap; overflow: hidden; text-overflow: clip;
   transition: background .2s, color .2s;
 }
 .tab.active { color: var(--on-brand); background: linear-gradient(140deg, var(--brand), var(--brand-deep)); }
@@ -507,3 +507,46 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 
 /* ── 홈 화면 설치 카드 ── */
 .install-card { border-color: var(--brand); }
+
+/* ── 정산 관리 ── */
+.settle-item { border-left-width: 6px; align-items: flex-start; }
+.settle-item .label { white-space: normal; }
+.settle-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; align-items: flex-end; }
+.settle-badge { font-size: 12px; font-weight: 800; padding: 3px 8px; min-height: 0; }
+/* 상태 색상 */
+.st-paid    { border-left-color: var(--green);  background: color-mix(in srgb, var(--green-soft) 40%, var(--card)); }
+.st-due     { border-left-color: var(--amber);  }
+.st-overdue { border-left-color: var(--red);    background: color-mix(in srgb, var(--red-soft) 45%, var(--card)); }
+.st-confirm { border-left-color: #e06c00; }
+.st-tax     { border-left-color: #2563eb; }
+.st-hold    { border-left-color: #555; opacity: .7; }
+.badge.st-paid    { background: var(--green-soft); color: var(--green); }
+.badge.st-due     { background: var(--amber-soft); color: var(--amber); }
+.badge.st-overdue { background: var(--red-soft);   color: var(--red); }
+.badge.st-confirm { background: #ffe8cc; color: #b35400; }
+.badge.st-tax     { background: #dbeafe; color: #1d4ed8; }
+.badge.st-hold    { background: var(--card-sub); color: var(--ink-dim); }
+
+.settle-calc { margin-top: 10px; font-size: 14px; color: var(--ink-dim); line-height: 1.5; }
+
+/* 입금 예정 달력 */
+.cal-nav { display: flex; align-items: center; gap: 6px; }
+.cal-nav #cal-label { font-weight: 800; font-size: 15px; min-width: 70px; text-align: center; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px; }
+.cal-head { text-align: center; font-size: 12px; font-weight: 700; color: var(--ink-dim); padding: 4px 0; }
+.cal-head.sun { color: var(--red); }
+.cal-cell {
+  aspect-ratio: 1 / 1; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--card-sub); cursor: pointer; font-family: inherit; color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 2px;
+}
+.cal-cell.empty { border: none; background: none; cursor: default; }
+.cal-cell.has { background: var(--brand-soft); border-color: var(--brand); }
+.cal-cell.today { outline: 2px solid var(--brand); }
+.cal-cell .cal-d { font-size: 13px; font-weight: 700; }
+.cal-cell .cal-amt { font-size: 11px; font-weight: 800; color: var(--brand); }
+.cal-detail {
+  margin-top: 10px; padding: 12px; border-radius: 10px;
+  background: var(--card-sub); border: 1px solid var(--line); font-size: 14px;
+}

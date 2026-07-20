@@ -15,7 +15,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="styles.css?v=20260720c">
+  <link rel="stylesheet" href="styles.css?v=20260720d">
   <script>
     // 첫 화면 깜빡임 방지: 저장된 테마를 그리기 전에 적용
     (function () {
@@ -46,6 +46,7 @@
 <nav class="tabs" id="tabs">
   <button class="tab active" data-tab="route">경로</button>
   <button class="tab" data-tab="drive">운행</button>
+  <button class="tab" data-tab="settle">정산</button>
   <button class="tab" data-tab="cargo">적재</button>
   <button class="tab" data-tab="ev">전기차</button>
   <button class="tab" data-tab="history">기록</button>
@@ -210,6 +211,102 @@
     </div>
   </section>
 
+  <!-- ══════════════ 정산 탭 ══════════════ -->
+  <section class="panel" id="panel-settle">
+
+    <!-- 운송건 추가/편집 폼 (평소 숨김) -->
+    <div class="card highlight hidden" id="settle-form-card">
+      <h2 class="card-title" id="settle-form-title">＋ 운송 추가</h2>
+      <div class="grid2">
+        <label class="field"><span class="field-label">업체명</span>
+          <input type="text" id="sf-company" class="input" list="sf-company-list" placeholder="예) 대한통운"></label>
+        <label class="field"><span class="field-label">운송금액(원)</span>
+          <input type="number" id="sf-amount" class="input" min="0" step="1000" placeholder="예) 80000"></label>
+      </div>
+      <datalist id="sf-company-list"></datalist>
+      <div class="grid2 top8">
+        <label class="field"><span class="field-label">결제방식</span>
+          <select id="sf-pay" class="input"></select></label>
+        <label class="field"><span class="field-label">운송일</span>
+          <input type="date" id="sf-shipdate" class="input"></label>
+      </div>
+      <div class="grid2 top8">
+        <label class="field"><span class="field-label">출발지</span>
+          <input type="text" id="sf-origin" class="input" placeholder="예) 인천 오류동"></label>
+        <label class="field"><span class="field-label">도착지</span>
+          <input type="text" id="sf-dest" class="input" placeholder="예) 서울 강남"></label>
+      </div>
+      <div class="grid2 top8">
+        <label class="field"><span class="field-label">수수료(공제, 원)</span>
+          <input type="number" id="sf-fee" class="input" min="0" step="100" placeholder="0"></label>
+        <label class="field"><span class="field-label">예상 입금일</span>
+          <input type="date" id="sf-expected" class="input"></label>
+      </div>
+      <div class="grid2 top8">
+        <label class="field"><span class="field-label">세금계산서 발행</span>
+          <select id="sf-tax" class="input"><option value="">발행 안 함</option><option value="1">발행함(부가세 10%)</option></select></label>
+        <label class="field" id="sf-taxdate-wrap"><span class="field-label">발행일</span>
+          <input type="date" id="sf-taxdate" class="input"></label>
+      </div>
+      <label class="field top8"><span class="field-label">메모</span>
+        <input type="text" id="sf-memo" class="input" placeholder="선택"></label>
+      <div class="settle-calc" id="sf-calc"></div>
+      <button class="btn primary big top8" id="btn-settle-save">💾 저장</button>
+      <div class="row gap top8">
+        <button class="btn ghost grow" id="btn-settle-cancel">취소</button>
+        <button class="btn ghost" id="btn-settle-delete" style="color:var(--red)">🗑️ 삭제</button>
+      </div>
+    </div>
+
+    <!-- 대시보드 -->
+    <div class="card highlight">
+      <div class="row space-between">
+        <h2 class="card-title">💰 내 정산 현황</h2>
+        <select id="settle-period" class="input" style="width:auto">
+          <option value="today">오늘</option>
+          <option value="week">이번주</option>
+          <option value="month" selected>이번달</option>
+          <option value="all">전체 누적</option>
+        </select>
+      </div>
+      <div class="totals" id="settle-summary"></div>
+      <div id="settle-unpaid-banner"></div>
+    </div>
+
+    <!-- 입금 예정 달력 -->
+    <div class="card">
+      <div class="row space-between">
+        <h2 class="card-title">📅 입금 예정 달력</h2>
+        <div class="cal-nav">
+          <button class="mini-btn" id="cal-prev">‹</button>
+          <span id="cal-label"></span>
+          <button class="mini-btn" id="cal-next">›</button>
+        </div>
+      </div>
+      <div id="settle-calendar"></div>
+      <div id="settle-calendar-detail"></div>
+    </div>
+
+    <!-- 운송 내역 -->
+    <div class="card">
+      <div class="row space-between">
+        <h2 class="card-title">📋 운송 내역</h2>
+        <button class="btn primary" id="btn-settle-add">＋ 운송 추가</button>
+      </div>
+      <div class="row gap top8">
+        <input type="text" id="settle-search" class="input grow" placeholder="🔍 업체·지역 검색">
+        <button class="chip" id="settle-unpaid-only">미수금만</button>
+      </div>
+      <ul class="stop-list" id="settle-list"></ul>
+    </div>
+
+    <!-- 업체별 요약 -->
+    <div class="card">
+      <h2 class="card-title">🏢 업체별 요약 <span class="hint">(미수금 많은 순)</span></h2>
+      <ul class="stop-list" id="settle-companies"></ul>
+    </div>
+  </section>
+
   <!-- ══════════════ 적재 탭 ══════════════ -->
   <section class="panel" id="panel-cargo">
     <div class="card">
@@ -306,9 +403,10 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="geo.js?v=20260720c"></script>
-<script src="sms.js?v=20260720c"></script>
-<script src="route.js?v=20260720c"></script>
-<script src="app.js?v=20260720c"></script>
+<script src="geo.js?v=20260720d"></script>
+<script src="sms.js?v=20260720d"></script>
+<script src="route.js?v=20260720d"></script>
+<script src="settle.js?v=20260720d"></script>
+<script src="app.js?v=20260720d"></script>
 </body>
 </html>

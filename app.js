@@ -115,6 +115,7 @@ function switchTab(name) {
   $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
   if (name === 'history') renderHistory();
   if (name === 'drive') renderDrive();
+  if (name === 'settle') renderSettle();
   if (name === 'ev') renderEvIfReady();
   if (name === 'route' && map) setTimeout(() => map.invalidateSize(), 100);
 }
@@ -1571,6 +1572,262 @@ function seedDemo() {
   state.trip = null;
 }
 
+// ─────────── 정산 관리 ───────────
+let settleCal = { y: null, m: null };   // 달력이 보고 있는 연/월
+let settleUnpaidOnly = false;
+
+function fmtDateShort(iso) {
+  if (!iso) return '-';
+  const [, m, d] = iso.split('-');
+  return `${+m}/${+d}`;
+}
+
+function initSettle() {
+  $('#sf-pay').innerHTML = Settle.PAY_METHODS.map(p => `<option value="${p}">${p}</option>`).join('');
+  $('#btn-settle-add').addEventListener('click', () => openSettleForm(null));
+  $('#btn-settle-cancel').addEventListener('click', closeSettleForm);
+  $('#btn-settle-save').addEventListener('click', saveSettleForm);
+  $('#btn-settle-delete').addEventListener('click', deleteSettleForm);
+  $('#settle-period').addEventListener('change', renderSettle);
+  $('#settle-search').addEventListener('input', renderSettleList);
+  $('#settle-unpaid-only').addEventListener('click', () => {
+    settleUnpaidOnly = !settleUnpaidOnly;
+    $('#settle-unpaid-only').classList.toggle('active', settleUnpaidOnly);
+    renderSettleList();
+  });
+  ['#sf-amount', '#sf-fee', '#sf-tax'].forEach(s => $(s).addEventListener('input', updateSettleCalc));
+  $('#sf-tax').addEventListener('change', () => {
+    $('#sf-taxdate-wrap').style.display = $('#sf-tax').value ? '' : 'none';
+    updateSettleCalc();
+  });
+  $('#cal-prev').addEventListener('click', () => { shiftCalMonth(-1); });
+  $('#cal-next').addEventListener('click', () => { shiftCalMonth(1); });
+}
+
+function shiftCalMonth(delta) {
+  let m = settleCal.m + delta, y = settleCal.y;
+  if (m < 0) { m = 11; y -= 1; }
+  if (m > 11) { m = 0; y += 1; }
+  settleCal = { y, m };
+  renderSettleCalendar();
+}
+
+function renderSettle() {
+  if (settleCal.y == null) {
+    const [y, m] = Settle.today().split('-').map(Number);
+    settleCal = { y, m: m - 1 };
+  }
+  renderSettleSummary();
+  renderSettleCalendar();
+  renderSettleList();
+  renderSettleCompanies();
+}
+
+function renderSettleSummary() {
+  const period = $('#settle-period').value;
+  const list = Settle.all().filter(r => Settle.inRange(r, period));
+  const s = Settle.summarize(list);
+  const chips = [
+    ['운송 건수', `${s.count}건`],
+    ['총 운송금액', fmtWon(s.amount)],
+    ['입금 완료', fmtWon(s.received)],
+    ['미수금', fmtWon(s.unpaid)],
+  ];
+  if (period === 'month' || period === 'all') {
+    chips.push(['수수료', fmtWon(s.fee)]);
+    chips.push(['계산서 발행', fmtWon(s.taxIssued)]);
+  }
+  $('#settle-summary').innerHTML = chips.map(c =>
+    `<div class="total-chip"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join('');
+
+  const totalUnpaid = Settle.unpaidTotal();
+  $('#settle-unpaid-banner').innerHTML = totalUnpaid > 0
+    ? `<div class="verdict bad" style="margin-top:10px">🔴 아직 못 받은 돈(전체) <b>${fmtWon(totalUnpaid)}</b> — 아래 [미수금만]으로 확인하세요</div>`
+    : `<div class="verdict ok" style="margin-top:10px">✅ 미수금 없음 — 모든 운송비를 받았습니다</div>`;
+}
+
+const KDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+function renderSettleCalendar() {
+  const { y, m } = settleCal;
+  $('#cal-label').textContent = `${y}.${String(m + 1).padStart(2, '0')}`;
+  const map = Settle.expectedByDate(y, m);
+  const first = new Date(y, m, 1).getDay();
+  const days = new Date(y, m + 1, 0).getDate();
+  const monthTotal = Object.values(map).reduce((a, x) => a + x.total, 0);
+
+  let html = '<div class="cal-grid">'
+    + KDAYS.map((d, i) => `<div class="cal-head ${i === 0 ? 'sun' : ''}">${d}</div>`).join('');
+  for (let i = 0; i < first; i++) html += '<div class="cal-cell empty"></div>';
+  const todayIso = Settle.today();
+  for (let d = 1; d <= days; d++) {
+    const iso = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const info = map[iso];
+    const isToday = iso === todayIso;
+    html += `<button class="cal-cell${info ? ' has' : ''}${isToday ? ' today' : ''}" data-cal="${iso}">
+      <span class="cal-d">${d}</span>
+      ${info ? `<span class="cal-amt">${Math.round(info.total / 10000)}만</span>` : ''}
+    </button>`;
+  }
+  html += '</div>';
+  html += `<p class="fine-print">📅 이번 달 입금 예정 합계: <b>${fmtWon(monthTotal)}</b> · 날짜를 누르면 상세가 보입니다</p>`;
+  $('#settle-calendar').innerHTML = html;
+  $('#settle-calendar').querySelectorAll('[data-cal]').forEach(b =>
+    b.addEventListener('click', () => showCalDetail(b.dataset.cal, map[b.dataset.cal])));
+  $('#settle-calendar-detail').innerHTML = '';
+}
+
+function showCalDetail(iso, info) {
+  const box = $('#settle-calendar-detail');
+  if (!info) {
+    box.innerHTML = `<div class="cal-detail"><b>${fmtDateShort(iso)}</b> 입금 예정 없음</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="cal-detail">
+    <div class="row space-between"><b>${fmtDateShort(iso)} 입금 예정</b><b style="color:var(--brand)">${fmtWon(info.total)}</b></div>
+    ${info.list.map(r => `<div class="row space-between" style="margin-top:6px">
+      <span>${esc(r.company || '미지정')}</span><span>${fmtWon(Settle.expectedAmount(r))}</span></div>`).join('')}
+  </div>`;
+}
+
+function settleStatusBadge(r) {
+  const st = Settle.STATUS[Settle.statusOf(r)];
+  return `<span class="badge settle-badge ${st.cls}">${st.dot} ${st.label}</span>`;
+}
+
+function renderSettleList() {
+  const q = ($('#settle-search').value || '').trim();
+  const period = $('#settle-period').value;
+  let list = Settle.all().filter(r => Settle.inRange(r, period));
+  if (settleUnpaidOnly) list = list.filter(Settle.isUnpaid);
+  if (q) list = list.filter(r => [r.company, r.origin, r.dest, r.memo].some(x => (x || '').includes(q)));
+  list.sort((a, b) => (b.shipDate || '').localeCompare(a.shipDate || ''));
+
+  const ul = $('#settle-list');
+  if (!list.length) {
+    ul.innerHTML = `<li class="stop-item" style="justify-content:center;color:var(--ink-dim)">${settleUnpaidOnly ? '미수금이 없습니다 👍' : '운송 내역이 없습니다. [＋ 운송 추가]를 눌러 등록하세요.'}</li>`;
+    return;
+  }
+  ul.innerHTML = list.map(r => {
+    const st = Settle.statusOf(r);
+    const paidBtn = Settle.isUnpaid(r)
+      ? `<button class="mini-btn done" data-pay="${r.id}">💰 입금확인</button>` : '';
+    const route = [r.origin, r.dest].filter(Boolean).map(esc).join(' → ');
+    return `<li class="stop-item settle-item ${Settle.STATUS[st].cls}">
+      <span class="label">
+        <span style="font-weight:800">${esc(r.company || '미지정')} · ${fmtWon(r.amount || 0)}</span>
+        <span class="sub">${settleStatusBadge(r)} ${r.payMethod || ''}${route ? ' · ' + route : ''}
+          <br>운송 ${fmtDateShort(r.shipDate)} · 예상입금 ${fmtDateShort(r.expectedDate)}${r.confirmed ? ` · 입금 ${fmtDateShort(r.paidDate)}` : ''}${r.tax ? ' · 계산서' : ''}</span>
+      </span>
+      <span class="settle-actions">
+        ${paidBtn}
+        <button class="mini-btn" data-edit="${r.id}">수정</button>
+      </span>
+    </li>`;
+  }).join('');
+  ul.querySelectorAll('[data-pay]').forEach(b => b.addEventListener('click', () => openPayConfirm(b.dataset.pay)));
+  ul.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openSettleForm(b.dataset.edit)));
+}
+
+function openPayConfirm(id) {
+  const r = Settle.get(id);
+  if (!r) return;
+  const exp = Settle.expectedAmount(r);
+  const input = prompt(`입금 확인 — ${r.company || '미지정'}\n실제 입금된 금액을 입력하세요 (엔터 시 예상액 ${exp.toLocaleString('ko-KR')}원)`, exp);
+  if (input === null) return;
+  Settle.confirmPaid(id, input === '' ? exp : Number(String(input).replace(/[^0-9]/g, '')), Settle.today());
+  toast('💰 입금 확인 — 미수금에서 차감했습니다');
+  renderSettle();
+}
+
+function renderSettleCompanies() {
+  const list = Settle.byCompany();
+  const dl = $('#sf-company-list');
+  if (dl) dl.innerHTML = list.map(c => `<option value="${esc(c.name)}">`).join('');
+  const ul = $('#settle-companies');
+  if (!list.length) { ul.innerHTML = `<li class="stop-item" style="justify-content:center;color:var(--ink-dim)">등록된 업체가 없습니다</li>`; return; }
+  ul.innerHTML = list.map(c => `
+    <li class="stop-item">
+      <span class="label">
+        <span style="font-weight:800">${esc(c.name)}</span>
+        <span class="sub">${c.count}건 · 총 ${fmtWon(c.amount)} · 입금 ${fmtWon(c.received)}${c.avgPayDays != null ? ` · 평균 ${c.avgPayDays}일` : ''}</span>
+      </span>
+      ${c.unpaid > 0 ? `<span class="badge settle-badge st-overdue">미수 ${fmtWon(c.unpaid)}</span>` : `<span class="badge settle-badge st-paid">완납</span>`}
+    </li>`).join('');
+}
+
+// ── 추가/편집 폼 ──
+let settleEditId = null;
+function openSettleForm(id) {
+  settleEditId = id;
+  const r = id ? Settle.get(id) : null;
+  $('#settle-form-title').textContent = id ? '✏️ 운송 수정' : '＋ 운송 추가';
+  $('#sf-company').value = r ? (r.company || '') : '';
+  $('#sf-amount').value = r ? (r.amount || '') : '';
+  $('#sf-pay').value = r ? (r.payMethod || Settle.PAY_METHODS[0]) : Settle.PAY_METHODS[0];
+  $('#sf-shipdate').value = r ? (r.shipDate || '') : Settle.today();
+  $('#sf-origin').value = r ? (r.origin || '') : '';
+  $('#sf-dest').value = r ? (r.dest || '') : '';
+  $('#sf-fee').value = r ? (r.fee || '') : '';
+  $('#sf-expected').value = r ? (r.expectedDate || '') : '';
+  $('#sf-tax').value = r && r.tax ? '1' : '';
+  $('#sf-taxdate').value = r ? (r.taxDate || '') : '';
+  $('#sf-memo').value = r ? (r.memo || '') : '';
+  $('#sf-taxdate-wrap').style.display = $('#sf-tax').value ? '' : 'none';
+  $('#btn-settle-delete').style.display = id ? '' : 'none';
+  updateSettleCalc();
+  $('#settle-form-card').classList.remove('hidden');
+  $('#settle-form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function closeSettleForm() {
+  $('#settle-form-card').classList.add('hidden');
+  settleEditId = null;
+}
+function updateSettleCalc() {
+  const amount = parseFloat($('#sf-amount').value) || 0;
+  const fee = parseFloat($('#sf-fee').value) || 0;
+  const tax = !!$('#sf-tax').value;
+  const gross = tax ? Math.round(amount * 1.1) : amount;
+  const expected = Math.max(0, gross - fee);
+  $('#sf-calc').innerHTML = amount > 0
+    ? `${tax ? `세금계산서 발행금액 <b>${fmtWon(gross)}</b> (부가세 포함) · ` : ''}예상 입금액 <b style="color:var(--brand)">${fmtWon(expected)}</b>${fee ? ` (수수료 ${fmtWon(fee)} 제외)` : ''}`
+    : '';
+}
+function saveSettleForm() {
+  const amount = parseFloat($('#sf-amount').value) || 0;
+  const company = $('#sf-company').value.trim();
+  if (!company) { toast('업체명을 입력해 주세요'); return; }
+  if (!(amount > 0)) { toast('운송금액을 입력해 주세요'); return; }
+  const rec = {
+    id: settleEditId || undefined,
+    company, amount,
+    payMethod: $('#sf-pay').value,
+    shipDate: $('#sf-shipdate').value || Settle.today(),
+    origin: $('#sf-origin').value.trim(),
+    dest: $('#sf-dest').value.trim(),
+    fee: parseFloat($('#sf-fee').value) || 0,
+    expectedDate: $('#sf-expected').value,
+    tax: !!$('#sf-tax').value,
+    taxDate: $('#sf-tax').value ? $('#sf-taxdate').value : '',
+    memo: $('#sf-memo').value.trim(),
+  };
+  if (settleEditId) {
+    const prev = Settle.get(settleEditId);
+    rec.confirmed = prev.confirmed; rec.paidDate = prev.paidDate; rec.paidAmount = prev.paidAmount; rec.hold = prev.hold;
+  }
+  Settle.upsert(rec);
+  closeSettleForm();
+  toast(settleEditId ? '✏️ 수정했습니다' : '✅ 운송을 등록했습니다');
+  renderSettle();
+}
+function deleteSettleForm() {
+  if (!settleEditId) return;
+  if (!confirm('이 운송 내역을 삭제할까요?')) return;
+  Settle.remove(settleEditId);
+  closeSettleForm();
+  toast('🗑️ 삭제했습니다');
+  renderSettle();
+}
+
 // ─────────── 홈 화면 설치 (PWA) ───────────
 // 안드로이드 크롬: beforeinstallprompt를 받아 버튼 하나로 설치.
 // 아이폰 사파리: 자동 설치 API가 없어 공유 → 홈 화면에 추가 방법을 안내한다.
@@ -1673,6 +1930,7 @@ function init() {
   });
   initEv();
   initCargo();
+  initSettle();
   initInstall();
 
   if (state.origin) {
