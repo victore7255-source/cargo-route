@@ -21,6 +21,7 @@
     (function () {
       var t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('cargo-theme');
       if (t) document.documentElement.dataset.theme = t;
+      if (localStorage.getItem('cargo-fontscale') === 'big') document.documentElement.dataset.fontscale = 'big';
     })();
   </script>
 </head>
@@ -33,7 +34,10 @@
       <h1>화물 혼적 경로</h1>
       <p class="tagline">AI 화물 운행 비서 · 방문 순서 자동 최적화</p>
     </div>
-    <button class="theme-toggle" id="btn-theme" title="밝게/어둡게 전환">🌙</button>
+    <div class="header-btns">
+      <button class="theme-toggle" id="btn-fontscale" title="글씨 크기 전환">가⁺ 큰 글씨</button>
+      <button class="theme-toggle" id="btn-theme" title="밝게/어둡게 전환">🌙</button>
+    </div>
   </div>
 </header>
 
@@ -41,7 +45,7 @@
   <button class="tab active" data-tab="route">경로</button>
   <button class="tab" data-tab="drive">운행</button>
   <button class="tab" data-tab="cargo">적재</button>
-  <button class="tab" data-tab="ev">EV</button>
+  <button class="tab" data-tab="ev">🔋전기차</button>
   <button class="tab" data-tab="history">기록</button>
 </nav>
 

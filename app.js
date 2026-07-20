@@ -602,7 +602,8 @@ function renderResult() {
       <div class="visit-num">${i + 1}</div>
       <div class="visit-body">
         <div class="visit-name">${esc(stop.label)} <span class="badge ${stop.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${stop.type}</span>${stop.schedule ? ` <span class="badge sched" style="cursor:default">📅 ${esc(stop.schedule)}</span>` : ''}</div>
-        <div class="visit-meta">도착 ${fmtTime(new Date(sch.arrive))} · 작업 ${stop.workMin}분 · 출발 ${fmtTime(new Date(sch.depart))}</div>
+        <div class="visit-meta"><span class="visit-arrive">🕐 ${fmtTime(new Date(sch.arrive))} 도착</span></div>
+        <div class="visit-meta">작업 ${stop.workMin}분 · ${fmtTime(new Date(sch.depart))} 출발</div>
         ${stop.cargo || stop.phone ? `<div class="visit-meta">${[stop.cargo ? '📦 ' + stop.cargo : '', stop.phone ? '📞 ' + (stop.contactName ? stop.contactName + ' ' : '') + stop.phone : ''].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
         ${stop.notes && stop.notes.length ? `<div class="visit-meta note">⚠️ ${stop.notes.map(esc).join(' / ')}</div>` : ''}
         <div class="visit-leg">↳ 이동 ${fmtKm(sch.legDistance)} · ${fmtDur(sch.legDuration)}${sch.factor && sch.factor > 1.25 ? ' <b>(정체 시간대)</b>' : ''}</div>
@@ -1263,7 +1264,7 @@ function updateTruckCbm() {
   const l = parseFloat($('#truck-l').value), w = parseFloat($('#truck-w').value), h = parseFloat($('#truck-h').value);
   const el = $('#truck-cbm');
   if (l > 0 && w > 0 && h > 0) {
-    el.innerHTML = `📐 적재함 용적: <b>${(l * w * h / 1e6).toFixed(2)} CBM</b> (${l} × ${w} × ${h}cm)`;
+    el.innerHTML = `📐 적재함 부피: <b>${(l * w * h / 1e6).toFixed(2)} CBM(㎥)</b> (${l} × ${w} × ${h}cm)`;
   } else {
     el.textContent = '';
   }
@@ -1529,7 +1530,7 @@ $('#btn-calc-cargo').addEventListener('click', () => {
     return [itemLabel(r.it), txt];
   });
   rows.push(['바닥 길이 합계', `${Math.round(usedLen)}cm / ${TL}cm (${Math.min(999, lenRate).toFixed(0)}%)`]);
-  rows.push(['실은 화물 부피', `${loadedCbm.toFixed(2)} CBM / 적재함 ${(TL * TW * TH / 1e6).toFixed(2)} CBM`]);
+  rows.push(['실은 화물 부피', `${loadedCbm.toFixed(2)} / 적재함 ${(TL * TW * TH / 1e6).toFixed(2)} CBM(㎥)`]);
   rows.push(['남은 공간', remainLen >= 1
     ? `길이 ${Math.round(remainLen)} × 폭 ${TW} × 높이 ${TH}cm = <b>${remainCbm.toFixed(2)} CBM</b>`
     : '없음']);
@@ -1640,9 +1641,23 @@ $('#btn-theme').addEventListener('click', () => {
   applyThemeIcon();
 });
 
+// 큰 글씨 전환 — 화면 전체를 확대해 노안에도 편하게
+function applyFontScaleIcon() {
+  const big = document.documentElement.dataset.fontscale === 'big';
+  $('#btn-fontscale').textContent = big ? '가 기본 크기' : '가⁺ 큰 글씨';
+}
+$('#btn-fontscale').addEventListener('click', () => {
+  const big = document.documentElement.dataset.fontscale === 'big';
+  if (big) { delete document.documentElement.dataset.fontscale; localStorage.setItem('cargo-fontscale', 'normal'); }
+  else { document.documentElement.dataset.fontscale = 'big'; localStorage.setItem('cargo-fontscale', 'big'); }
+  applyFontScaleIcon();
+  if (map) setTimeout(() => map.invalidateSize(), 100);
+});
+
 // ─────────── 초기화 ───────────
 function init() {
   applyThemeIcon();
+  applyFontScaleIcon();
   loadState();
   // 체험 모드(?demo): 서버 호출 없이 예시 데이터로 화면을 보여준다
   if (new URLSearchParams(location.search).has('demo')) seedDemo();
