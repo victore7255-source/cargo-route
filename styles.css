@@ -72,6 +72,8 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
+/* 한글은 낱말 단위로 줄바꿈 — "경로"가 "경/로"로 쪼개지지 않게 (글씨를 키워도 배치가 깨지지 않음) */
+body { word-break: keep-all; overflow-wrap: anywhere; }
 
 body {
   font-family: "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, sans-serif;
@@ -83,34 +85,39 @@ body {
   padding-bottom: 40px;
   transition: background .3s, color .3s;
 }
-/* "큰 글씨" 모드: 화면 전체를 15% 확대한다 (px 기반 요소까지 모두 커짐) */
-html[data-fontscale="big"] body { zoom: 1.15; }
+/* 글씨 크기 3단계 — 기본값은 "크게"(1). px 기반 요소까지 함께 확대된다. */
+html[data-fontscale="0"] body { zoom: 1; }        /* 기본 */
+html[data-fontscale="1"] body { zoom: 1.15; }     /* 크게 (앱 기본값) */
+html[data-fontscale="2"] body { zoom: 1.3; }      /* 더 크게 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 
 /* ── 헤더 ── */
-.app-header { padding: 26px 18px 18px; }
+.app-header { padding: 22px 16px 16px; }
 .header-inner {
   max-width: 640px; margin: 0 auto;
-  display: flex; align-items: center; gap: 13px;
+  display: flex; align-items: center; gap: 11px;
 }
 .logo {
-  width: 52px; height: 52px; flex-shrink: 0;
+  width: 48px; height: 48px; flex-shrink: 0;
   background: linear-gradient(140deg, var(--brand), var(--brand-deep));
-  border-radius: 15px;
+  border-radius: 14px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 27px;
+  font-size: 25px;
   box-shadow: var(--shadow-btn);
 }
 .header-text { flex: 1; min-width: 0; }
-h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink); }
-.tagline { font-size: 12.5px; color: var(--ink-dim); letter-spacing: -0.01em; }
+h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink); line-height: 1.2; }
+.tagline { font-size: 12px; color: var(--ink-dim); letter-spacing: -0.01em; margin-top: 2px; }
 .theme-toggle {
-  width: 40px; height: 40px; flex-shrink: 0;
+  flex-shrink: 0;
+  min-width: 40px; min-height: 40px; padding: 6px 10px;
   border: 1px solid var(--line); border-radius: 999px;
   background: var(--card); color: var(--ink);
-  font-size: 17px; cursor: pointer;
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  white-space: nowrap;
   box-shadow: var(--shadow);
 }
 
@@ -233,12 +240,15 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   display: flex; align-items: center; gap: 9px;
   background: var(--card-sub);
   border: 1px solid var(--line);
+  border-left-width: 6px;   /* 색 띠로 상차/하차 구분 */
   border-radius: 12px;
   padding: 10px 11px;
   margin-bottom: 7px;
-  font-size: 14px;
+  font-size: 15px;
   animation: rise .25s ease both;
 }
+.stop-item.load { border-left-color: var(--amber); }
+.stop-item.unload { border-left-color: var(--green); }
 .stop-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .stop-item .sub { display: block; font-size: 13px; font-weight: 400; color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stop-item.error { border-color: var(--red); background: var(--red-soft); }
@@ -286,10 +296,15 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 .visit-list { list-style: none; }
 .visit-item {
   display: flex; gap: 11px; align-items: flex-start;
-  padding: 11px 2px;
-  border-bottom: 1px dashed var(--line);
+  padding: 11px 11px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-left-width: 6px;   /* 색 띠로 상차/하차를 한눈에 구분 */
 }
-.visit-item:last-child { border-bottom: none; }
+/* 상차 = 주황(싣기), 하차 = 초록(내리기) */
+.visit-item.load { border-left-color: var(--amber); background: var(--card-sub); background: color-mix(in srgb, var(--amber-soft) 45%, var(--card)); }
+.visit-item.unload { border-left-color: var(--green); background: var(--card-sub); background: color-mix(in srgb, var(--green-soft) 45%, var(--card)); }
 .visit-num {
   flex-shrink: 0;
   width: 27px; height: 27px; border-radius: 50%;
@@ -474,12 +489,7 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 
 /* ── 헤더 설정 버튼(밝게/어둡게, 큰 글씨) ── */
 .header-btns { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
-.theme-toggle {
-  width: auto; height: auto; min-height: 38px; padding: 6px 12px;
-  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-  font-size: 13px; font-weight: 700; letter-spacing: -0.02em;
-  white-space: nowrap;
-}
+.header-btns .theme-toggle { width: 100%; }
 
 /* ── 홈 화면 설치 카드 ── */
 .install-card { border-color: var(--brand); }

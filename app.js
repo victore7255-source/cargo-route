@@ -370,7 +370,8 @@ function renderStops() {
   const makeLi = ({ s, i }, isFuture) => {
     const li = document.createElement('li');
     li.dataset.i = i;
-    li.className = 'stop-item' + (s.status === 'error' ? ' error' : '') + (isFuture ? ' future' : '');
+    li.className = 'stop-item ' + (s.type === '상차' ? 'load' : 'unload')
+      + (s.status === 'error' ? ' error' : '') + (isFuture ? ' future' : '');
     const statusIcon = s.status === 'pending' ? '⏳' : s.status === 'error' ? '⚠️' : isFuture ? '📅' : '📍';
     const info = [
       s.schedule && !s.visitDate ? '📅 ' + s.schedule : '',
@@ -597,7 +598,7 @@ function renderResult() {
     const stop = state.stops[stopIdx];
     const sch = res.schedule[i];
     const li = document.createElement('li');
-    li.className = 'visit-item';
+    li.className = 'visit-item ' + (stop.type === '상차' ? 'load' : 'unload');
     li.innerHTML = `
       <div class="visit-num">${i + 1}</div>
       <div class="visit-body">
@@ -842,7 +843,7 @@ function renderDriveChecklist() {
   stops.forEach((s, i) => {
     const ev = trip.events[s.id] || {};
     const li = document.createElement('li');
-    li.className = 'visit-item';
+    li.className = 'visit-item ' + (s.type === '상차' ? 'load' : 'unload');
     const waitMin = (ev.arrivedAt && ev.doneAt) ? Math.round((ev.doneAt - ev.arrivedAt) / 60000) : null;
     let meta = '';
     if (ev.arrivedAt) meta += `도착 ${fmtTime(new Date(ev.arrivedAt))}`;
@@ -1641,16 +1642,21 @@ $('#btn-theme').addEventListener('click', () => {
   applyThemeIcon();
 });
 
-// 큰 글씨 전환 — 화면 전체를 확대해 노안에도 편하게
+// 글씨 크기 전환 — 3단계(기본→크게→더 크게)를 눌러가며 순환. 기본값은 "크게".
+const FONT_LEVELS = ['기본', '크게', '더 크게'];
+function currentFontLevel() {
+  const v = parseInt(document.documentElement.dataset.fontscale, 10);
+  return (v === 0 || v === 1 || v === 2) ? v : 1;
+}
 function applyFontScaleIcon() {
-  const big = document.documentElement.dataset.fontscale === 'big';
-  $('#btn-fontscale').textContent = big ? '가 기본 크기' : '가⁺ 큰 글씨';
+  $('#btn-fontscale').textContent = '🔠 ' + FONT_LEVELS[currentFontLevel()];
 }
 $('#btn-fontscale').addEventListener('click', () => {
-  const big = document.documentElement.dataset.fontscale === 'big';
-  if (big) { delete document.documentElement.dataset.fontscale; localStorage.setItem('cargo-fontscale', 'normal'); }
-  else { document.documentElement.dataset.fontscale = 'big'; localStorage.setItem('cargo-fontscale', 'big'); }
+  const next = (currentFontLevel() + 1) % 3;
+  document.documentElement.dataset.fontscale = String(next);
+  localStorage.setItem('cargo-fontscale', String(next));
   applyFontScaleIcon();
+  toast(`🔠 글씨 크기: ${FONT_LEVELS[next]}`);
   if (map) setTimeout(() => map.invalidateSize(), 100);
 });
 

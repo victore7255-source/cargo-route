@@ -21,7 +21,9 @@
     (function () {
       var t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('cargo-theme');
       if (t) document.documentElement.dataset.theme = t;
-      if (localStorage.getItem('cargo-fontscale') === 'big') document.documentElement.dataset.fontscale = 'big';
+      // 글씨 크기: 저장값이 없으면 기본을 "크게"(1)로 — 50~70대 기본 가독성
+      var fs = localStorage.getItem('cargo-fontscale');
+      document.documentElement.dataset.fontscale = (fs === '0' || fs === '1' || fs === '2') ? fs : '1';
     })();
   </script>
 </head>
@@ -35,7 +37,7 @@
       <p class="tagline">AI 화물 운행 비서 · 방문 순서 자동 최적화</p>
     </div>
     <div class="header-btns">
-      <button class="theme-toggle" id="btn-fontscale" title="글씨 크기 전환">가⁺ 큰 글씨</button>
+      <button class="theme-toggle" id="btn-fontscale" title="글씨 크기 전환 (기본 → 크게 → 더 크게)">🔠 글씨</button>
       <button class="theme-toggle" id="btn-theme" title="밝게/어둡게 전환">🌙</button>
     </div>
   </div>
