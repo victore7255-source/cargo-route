@@ -1646,10 +1646,10 @@ $('#btn-theme').addEventListener('click', () => {
 const FONT_LEVELS = ['기본', '크게', '더 크게'];
 function currentFontLevel() {
   const v = parseInt(document.documentElement.dataset.fontscale, 10);
-  return (v === 0 || v === 1 || v === 2) ? v : 1;
+  return (v === 0 || v === 1 || v === 2) ? v : 0;
 }
 function applyFontScaleIcon() {
-  $('#btn-fontscale').textContent = '🔠 ' + FONT_LEVELS[currentFontLevel()];
+  $('#btn-fontscale').textContent = '가 ' + FONT_LEVELS[currentFontLevel()];
 }
 $('#btn-fontscale').addEventListener('click', () => {
   const next = (currentFontLevel() + 1) % 3;

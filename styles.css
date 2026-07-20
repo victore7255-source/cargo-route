@@ -85,10 +85,10 @@ body {
   padding-bottom: 40px;
   transition: background .3s, color .3s;
 }
-/* 글씨 크기 3단계 — 기본값은 "크게"(1). px 기반 요소까지 함께 확대된다. */
-html[data-fontscale="0"] body { zoom: 1; }        /* 기본 */
-html[data-fontscale="1"] body { zoom: 1.15; }     /* 크게 (앱 기본값) */
-html[data-fontscale="2"] body { zoom: 1.3; }      /* 더 크게 */
+/* 글씨 크기 3단계 — 기본값(0) 자체가 이미 큼. px 기반 요소까지 함께 확대된다. */
+html[data-fontscale="0"] body { zoom: 1.3; }      /* 기본 (기존 '더 크게'를 기본값으로) */
+html[data-fontscale="1"] body { zoom: 1.42; }     /* 크게 */
+html[data-fontscale="2"] body { zoom: 1.55; }     /* 더 크게 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
@@ -112,11 +112,11 @@ h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.03em; color: var(--in
 .tagline { font-size: 12px; color: var(--ink-dim); letter-spacing: -0.01em; margin-top: 2px; }
 .theme-toggle {
   flex-shrink: 0;
-  min-width: 40px; min-height: 40px; padding: 6px 10px;
+  min-height: 38px; padding: 5px 10px;
   border: 1px solid var(--line); border-radius: 999px;
   background: var(--card); color: var(--ink);
-  font-size: 13px; font-weight: 700; cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  font-size: 12.5px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
   white-space: nowrap;
   box-shadow: var(--shadow);
 }
@@ -453,6 +453,18 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   .grid3 { grid-template-columns: 1fr 1fr; }
   .tab { font-size: 12.5px; }
   h1 { font-size: 20px; }
+}
+/* 글씨를 크게 키우면 화면 폭이 상대적으로 좁아진다(zoom). 그 좁은 폭에서도
+   탭·헤더가 깨지지 않도록 단계적으로 줄여준다. */
+@media (max-width: 380px) {
+  .tabs { gap: 2px; padding: 4px; }
+  .tab { font-size: 12px; padding: 9px 1px; letter-spacing: -0.04em; }
+}
+@media (max-width: 290px) {
+  .tab { font-size: 11px; }
+  .tagline { display: none; }         /* 초대형 글씨: 부제 숨겨 제목에 폭 양보 */
+  h1 { font-size: 18px; }
+  .header-btns .theme-toggle { font-size: 12px; padding: 5px 8px; }
 }
 
 /* ── 특이사항·일정·문자 요약 표시 ── */

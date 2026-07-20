@@ -21,9 +21,9 @@
     (function () {
       var t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('cargo-theme');
       if (t) document.documentElement.dataset.theme = t;
-      // 글씨 크기: 저장값이 없으면 기본을 "크게"(1)로 — 50~70대 기본 가독성
+      // 글씨 크기: 저장값이 없으면 기본(0) — 기본 자체가 이미 크게 설정됨
       var fs = localStorage.getItem('cargo-fontscale');
-      document.documentElement.dataset.fontscale = (fs === '0' || fs === '1' || fs === '2') ? fs : '1';
+      document.documentElement.dataset.fontscale = (fs === '0' || fs === '1' || fs === '2') ? fs : '0';
     })();
   </script>
 </head>
@@ -37,8 +37,8 @@
       <p class="tagline">AI 화물 운행 비서 · 방문 순서 자동 최적화</p>
     </div>
     <div class="header-btns">
-      <button class="theme-toggle" id="btn-fontscale" title="글씨 크기 전환 (기본 → 크게 → 더 크게)">🔠 글씨</button>
-      <button class="theme-toggle" id="btn-theme" title="밝게/어둡게 전환">🌙</button>
+      <button class="theme-toggle" id="btn-fontscale" title="글씨 크기 전환 (기본 → 크게 → 더 크게)">가 기본</button>
+      <button class="theme-toggle" id="btn-theme" title="밝게/어둡게 전환">🌙 어둡게</button>
     </div>
   </div>
 </header>
@@ -47,7 +47,7 @@
   <button class="tab active" data-tab="route">경로</button>
   <button class="tab" data-tab="drive">운행</button>
   <button class="tab" data-tab="cargo">적재</button>
-  <button class="tab" data-tab="ev">🔋전기차</button>
+  <button class="tab" data-tab="ev">전기차</button>
   <button class="tab" data-tab="history">기록</button>
 </nav>
 
