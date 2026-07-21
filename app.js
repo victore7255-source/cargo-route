@@ -76,7 +76,6 @@ function isFutureStop(s) {
 
 // ─────────── 상태 ───────────
 const STATE_KEY = 'cargo-app-state-v1';
-const HISTORY_KEY = 'cargo-history-v1';
 
 const state = {
   origin: null,   // {label, lat, lng}
@@ -99,12 +98,6 @@ function loadState() {
     if (s) Object.assign(state, s);
   } catch (e) { /* ignore */ }
 }
-function getHistory() {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (e) { return []; }
-}
-function setHistory(list) {
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (e) { /* ignore */ }
-}
 
 // ─────────── 탭 ───────────
 $$('#tabs .tab').forEach(btn => {
@@ -113,9 +106,7 @@ $$('#tabs .tab').forEach(btn => {
 function switchTab(name) {
   $$('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
-  if (name === 'history') renderHistory();
   if (name === 'drive') renderDrive();
-  if (name === 'ev') renderEvIfReady();
   if (name === 'route' && map) setTimeout(() => map.invalidateSize(), 100);
 }
 
@@ -613,7 +604,6 @@ function renderResult() {
   renderMap();
   renderAiTips();
   renderNaviButtons($('#navi-buttons'), 0);
-  renderEvIfReady();
 }
 
 // ─────────── 지도 ───────────
@@ -633,7 +623,7 @@ function renderMap() {
 
   const mk = (p, text, cls) => {
     const m = L.marker([p.lat, p.lng], {
-      icon: L.divIcon({ className: 'map-marker ' + cls, html: text, iconSize: [26, 26] }),
+      icon: L.divIcon({ className: 'map-marker ' + cls, html: text, iconSize: [36, 36], iconAnchor: [18, 18] }),
     }).addTo(map);
     mapLayers.push(m);
   };
@@ -683,14 +673,6 @@ async function renderAiTips() {
   const unloads = state.stops.filter(s => s.type === '하차').length;
   if (loads && unloads) {
     tips.push({ icon: '📦', text: `상차 ${loads}곳 · 하차 ${unloads}곳 혼적 운행입니다. 상차지에서 하차 순서 역순으로 싣으면(나중에 내릴 짐을 안쪽에) 하차가 빨라집니다.` });
-  }
-
-  // EV 잔량 체크
-  const ev = loadEvSettings();
-  if (ev && ev.range > 0) {
-    if (ev.range < (res.distance / 1000) * 1.15) {
-      tips.push({ icon: '🔋', text: `계기판 주행가능거리 약 ${Math.round(ev.range)}km — 이번 경로(${fmtKm(res.distance)})에 충전이 필요할 수 있습니다. EV 탭에서 충전 계획을 확인하세요.` });
-    }
   }
 
   ul.innerHTML = tips.map(t => `<li data-icon="${t.icon}">${esc(t.text)}</li>`).join('');
@@ -790,7 +772,6 @@ function renderDrive() {
   const active = trip && !trip.endedAt;
   $('#drive-empty').classList.toggle('hidden', !!trip);
   $('#drive-active').classList.toggle('hidden', !active);
-  $('#drive-summary').classList.toggle('hidden', !(trip && trip.endedAt));
 
   clearInterval(driveTimerId);
   if (active) {
@@ -798,8 +779,6 @@ function renderDrive() {
     tick();
     driveTimerId = setInterval(tick, 1000);
     renderDriveChecklist();
-  } else if (trip && trip.endedAt) {
-    renderTripSummary();
   }
 }
 
@@ -994,224 +973,12 @@ async function driveAddStops() {
 
 $('#btn-end-trip').addEventListener('click', () => {
   if (!confirm('운행을 종료할까요?')) return;
-  state.trip.endedAt = Date.now();
-  saveState();
-  renderDrive();
-});
-
-function renderTripSummary() {
-  const trip = state.trip;
-  const durSec = (trip.endedAt - trip.startedAt) / 1000;
-  const km = trip.snapshot.distance / 1000;
-  const avgKmh = durSec > 0 ? km / (durSec / 3600) : 0;
-  $('#summary-totals').innerHTML = `
-    <div class="total-chip"><div class="v">${fmtKm(trip.snapshot.distance)}</div><div class="k">이동거리(계획)</div></div>
-    <div class="total-chip"><div class="v">${fmtDur(durSec)}</div><div class="k">총 운행시간</div></div>
-    <div class="total-chip"><div class="v">${avgKmh.toFixed(1)}km/h</div><div class="k">평균속도</div></div>
-    <div class="total-chip"><div class="v">${Object.values(trip.events).filter(e => e.doneAt).length}곳</div><div class="k">완료 배송지</div></div>`;
-  $('#sum-toll').value = trip.snapshot.toll || 0;
-}
-
-$('#btn-save-trip').addEventListener('click', () => {
-  const trip = state.trip;
-  const record = {
-    id: uid(),
-    date: new Date(trip.startedAt).toISOString(),
-    startedAt: trip.startedAt,
-    endedAt: trip.endedAt,
-    distance: trip.snapshot.distance,
-    durationSec: (trip.endedAt - trip.startedAt) / 1000,
-    toll: parseInt($('#sum-toll').value, 10) || 0,
-    chargeCost: parseInt($('#sum-charge-cost').value, 10) || 0,
-    chargeCount: parseInt($('#sum-charge-count').value, 10) || 0,
-    memo: $('#sum-memo').value.trim(),
-    origin: trip.snapshot.origin.label,
-    stops: trip.snapshot.stops.map(s => ({
-      label: s.label, type: s.type,
-      arrivedAt: (trip.events[s.id] || {}).arrivedAt || null,
-      doneAt: (trip.events[s.id] || {}).doneAt || null,
-    })),
-  };
-  const history = getHistory();
-  history.unshift(record);
-  setHistory(history);
   state.trip = null;
   saveState();
   renderDrive();
-  switchTab('history');
-  toast('💾 운행 기록을 저장했습니다');
+  switchTab('route');
+  toast('🏁 운행을 종료했습니다. 수고하셨습니다!');
 });
-
-$('#btn-discard-trip').addEventListener('click', () => {
-  if (!confirm('이번 운행 기록을 저장하지 않고 버릴까요?')) return;
-  state.trip = null;
-  saveState();
-  renderDrive();
-});
-
-// ─────────── 기록 ───────────
-function renderHistory() {
-  const history = getHistory();
-  const now = new Date();
-  const thisMonth = history.filter(r => {
-    const d = new Date(r.date);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  });
-  const sum = (arr, f) => arr.reduce((s, r) => s + f(r), 0);
-  $('#history-stats').innerHTML = `
-    <div class="total-chip"><div class="v">${thisMonth.length}회</div><div class="k">운행 횟수</div></div>
-    <div class="total-chip"><div class="v">${fmtKm(sum(thisMonth, r => r.distance))}</div><div class="k">총 이동거리</div></div>
-    <div class="total-chip"><div class="v">${fmtWon(sum(thisMonth, r => r.toll))}</div><div class="k">통행료</div></div>
-    <div class="total-chip"><div class="v">${fmtWon(sum(thisMonth, r => r.chargeCost))}</div><div class="k">충전비</div></div>`;
-
-  const wrap = $('#history-list');
-  if (!history.length) {
-    wrap.innerHTML = '<div class="card center-card"><p class="big-emoji">📋</p><p>저장된 운행 기록이 없습니다.</p></div>';
-    return;
-  }
-  wrap.innerHTML = history.map(r => {
-    const d = new Date(r.date);
-    const dateStr = `${d.getMonth() + 1}/${d.getDate()} ${fmtTime(d)}`;
-    const avgKmh = r.durationSec > 0 ? (r.distance / 1000) / (r.durationSec / 3600) : 0;
-    const stopsHtml = r.stops.map((s, i) =>
-      `${i + 1}. [${s.type}] ${esc(s.label)}${s.doneAt ? ' ✓ ' + fmtTime(new Date(s.doneAt)) : ''}`).join('<br>');
-    return `<details class="history-item">
-      <summary><span>${esc(r.origin)} 출발 · ${r.stops.length}곳</span><span class="history-date">${dateStr}</span></summary>
-      <div class="history-detail">
-        <b>${fmtKm(r.distance)}</b> · ${fmtDur(r.durationSec)} · 평균 <b>${avgKmh.toFixed(1)}km/h</b><br>
-        통행료 ${fmtWon(r.toll)} · 충전비 ${fmtWon(r.chargeCost)} (${r.chargeCount}회)<br>
-        ${r.memo ? '메모: ' + esc(r.memo) + '<br>' : ''}
-        <div style="margin-top:6px">${stopsHtml}</div>
-        <button class="mini-btn top8" data-del="${r.id}">🗑️ 이 기록 삭제</button>
-      </div>
-    </details>`;
-  }).join('');
-  wrap.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
-    if (!confirm('이 기록을 삭제할까요?')) return;
-    setHistory(getHistory().filter(r => r.id !== b.dataset.del));
-    renderHistory();
-  }));
-}
-
-$('#btn-export-history').addEventListener('click', () => {
-  const data = JSON.stringify(getHistory(), null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `운행기록_${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-});
-
-// ─────────── EV ───────────
-const EV_KEY = 'cargo-ev-v2';
-
-function loadEvSettings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(EV_KEY) || 'null');
-    if (saved && saved.range > 0) return saved;
-    // 구버전(배터리용량·전비 방식) 데이터 이전
-    const old = JSON.parse(localStorage.getItem('cargo-ev-v1') || 'null');
-    if (old && old.capacity && old.efficiency && old.battery) {
-      return { range: Math.round(old.capacity * (old.battery / 100) * old.efficiency), battery: old.battery };
-    }
-    return null;
-  } catch (e) { return null; }
-}
-function saveEvSettings() {
-  localStorage.setItem(EV_KEY, JSON.stringify({
-    range: parseFloat($('#ev-range').value) || 0,
-    battery: parseFloat($('#ev-battery').value) || null,
-  }));
-}
-
-function initEv() {
-  const saved = loadEvSettings();
-  if (saved) {
-    $('#ev-range').value = saved.range || '';
-    $('#ev-battery').value = saved.battery || '';
-  }
-}
-
-$('#btn-calc-ev').addEventListener('click', () => {
-  if (!(parseFloat($('#ev-range').value) > 0)) {
-    toast('계기판에 표시된 주행가능거리(km)를 입력해 주세요');
-    return;
-  }
-  saveEvSettings();
-  renderEv();
-});
-
-function renderEvIfReady() {
-  const ev = loadEvSettings();
-  if (ev && ev.range > 0 && state.result) {
-    $('#ev-range').value = ev.range;
-    if (ev.battery) $('#ev-battery').value = ev.battery;
-    renderEv();
-  }
-}
-
-function renderEv() {
-  const range = parseFloat($('#ev-range').value) || 0;
-  let battery = parseFloat($('#ev-battery').value) || null;
-  if (battery != null) battery = Math.min(100, Math.max(1, battery));
-  const SAFE = 0.85; // 계기판 표시치의 오차·우회를 감안한 15% 여유
-
-  const rows = [
-    ['현재 주행가능거리 (계기판)', `${Math.round(range)}km`],
-    ['안전 주행거리 (15% 여유)', `약 ${Math.round(range * SAFE)}km`],
-  ];
-  if (battery) rows.push(['현재 배터리', `${battery}%`]);
-  let verdict = '';
-  let extraHtml = '';
-
-  if (state.result) {
-    const totalKm = state.result.distance / 1000;
-    const remainKm = range - totalKm;
-    // 계기판 거리는 현재 잔량 기준이므로, 경로만큼 달리면 그 비율만큼 배터리를 쓴다
-    const endPct = battery ? battery * (1 - totalKm / range) : null;
-    rows.push(['이번 경로 거리', fmtKm(state.result.distance)]);
-    rows.push(['완주 시 남는 거리', remainKm > 0 ? `약 ${Math.round(remainKm)}km` : '부족']);
-    if (endPct != null) rows.push(['도착 시 배터리 (예상)', endPct > 0 ? `약 ${Math.round(endPct)}%` : '방전']);
-
-    if (totalKm <= range * SAFE) {
-      verdict = `<div class="verdict ok">✅ 충전 없이 완주 가능 — 도착 후에도 약 ${Math.round(remainKm)}km 여유${endPct != null ? ` (배터리 약 ${Math.round(endPct)}%)` : ''}</div>`;
-    } else {
-      // 어느 지점에서 충전이 필요한지 계산
-      let cum = 0, chargeBeforeIdx = -1;
-      const safeKm = range * SAFE;
-      const stops = orderedStops();
-      for (let i = 0; i < state.result.legs.length; i++) {
-        cum += state.result.legs[i].distance / 1000;
-        if (cum > safeKm) { chargeBeforeIdx = i; break; }
-      }
-      const where = chargeBeforeIdx >= 0 && stops[chargeBeforeIdx]
-        ? `<b>${chargeBeforeIdx + 1}번째 목적지(${esc(stops[chargeBeforeIdx].label)})</b> 도착 전`
-        : '경로 후반부';
-      verdict = totalKm <= range
-        ? `<div class="verdict warn">⚠️ 아슬아슬하게 완주 가능 (여유 약 ${Math.round(remainKm)}km) — ${where} 충전을 권장합니다</div>`
-        : `<div class="verdict bad">🔴 충전 없이 완주 불가 (약 ${Math.round(-remainKm)}km 부족) — ${where} 반드시 충전하세요</div>`;
-
-      const chargePoint = chargeBeforeIdx > 0 && stops[chargeBeforeIdx - 1]
-        ? stops[chargeBeforeIdx - 1] : state.origin;
-      const q = encodeURIComponent('전기차충전소');
-      extraHtml += `
-        <div class="navi-grid top8">
-          <a class="navi-btn kakao" href="kakaomap://search?q=${q}&p=${chargePoint.lat},${chargePoint.lng}">카카오맵<br>충전소 검색</a>
-          <a class="navi-btn tmap" href="tmap://search?name=${q}">TMAP<br>충전소 검색</a>
-          <a class="navi-btn naver" href="nmap://search?query=${q}&appname=cargo.route.web">네이버<br>충전소 검색</a>
-        </div>
-        <p class="fine-print">충전 지점 근처(${esc(chargePoint.label || '출발지')})에서 급속충전소를 검색합니다. 충전 후 계기판의 주행가능거리를 다시 입력하고 [충전 계획 분석]을 누르면 재계산됩니다.</p>`;
-    }
-  } else {
-    verdict = '<div class="verdict warn">경로를 먼저 계산하면 이번 운행의 충전 필요 여부를 분석해 드립니다.</div>';
-  }
-
-  $('#ev-output').innerHTML = verdict
-    + '<table class="result-table">' + rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('') + '</table>'
-    + extraHtml;
-  $('#ev-result').classList.remove('hidden');
-}
 
 // ─────────── 적재 계산 ───────────
 const TRUCK_KEY = 'cargo-truck-v1';
@@ -1650,7 +1417,6 @@ function init() {
   state.stops.forEach(s => {
     if (s.status === 'pending') s.status = (s.lat != null) ? 'ok' : 'error';
   });
-  initEv();
   initCargo();
   initInstall();
 
