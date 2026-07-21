@@ -239,8 +239,9 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   font-size: 15px;
   animation: rise .25s ease both;
 }
-.stop-item .label { flex: 1; min-width: 0; white-space: normal; font-weight: 600; }
-.stop-item .sub { display: block; font-size: 13px; font-weight: 400; color: var(--ink-dim); white-space: normal; }
+.stop-item .label { flex: 1; min-width: 0; white-space: normal; font-weight: 600; line-height: 1.4; }
+.stop-item .sub { display: block; font-size: 13.5px; font-weight: 400; color: var(--ink-dim); white-space: normal; line-height: 1.7; margin-top: 4px; }
+.stop-item .sub b, .stop-item .sub .note { line-height: 1.7; }
 .stop-item.error { border-color: var(--red); background: var(--red-soft); }
 
 .badge {

@@ -603,7 +603,6 @@ function renderResult() {
 
   renderMap();
   renderAiTips();
-  renderNaviButtons($('#navi-buttons'), 0);
 }
 
 // ─────────── 지도 ───────────
@@ -720,11 +719,19 @@ function naviButtonsHtml(dest) {
     <a class="navi-btn naver" href="${links.naver}">네이버지도<br>실행</a>`;
 }
 
-function renderNaviButtons(container, orderPos) {
-  const stops = orderedStops();
-  const dest = stops[orderPos];
-  if (!dest) { container.innerHTML = ''; return; }
-  container.innerHTML = naviButtonsHtml(dest);
+/** 네이버지도 전체 경로 URL: 현재위치 → 경유지(최대 5) → 최종 목적지 */
+function naverFullRouteUrl(stops) {
+  const valid = stops.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+  if (valid.length < 2) return null;
+  const nm = (s) => encodeURIComponent(String(s.label || '목적지').slice(0, 60));
+  const dest = valid[valid.length - 1];
+  const vias = valid.slice(0, -1).slice(0, 5);   // 네이버 경유지 최대 5곳
+  let url = `nmap://route/car?dlat=${(+dest.lat).toFixed(6)}&dlng=${(+dest.lng).toFixed(6)}&dname=${nm(dest)}`;
+  vias.forEach((v, i) => {
+    url += `&v${i + 1}lat=${(+v.lat).toFixed(6)}&v${i + 1}lng=${(+v.lng).toFixed(6)}&v${i + 1}name=${nm(v)}`;
+  });
+  url += '&appname=cargo.route.web';
+  return { url, dropped: (valid.length - 1) - vias.length };
 }
 
 $('#btn-copy-order').addEventListener('click', () => {
@@ -797,17 +804,36 @@ function renderDriveChecklist() {
   if (next) {
     const idx = stops.indexOf(next);
     $('#next-stop-card').classList.remove('hidden');
-    const arriveMsg = `안녕하세요, 화물 기사입니다. ${next.type === '상차' ? '상차' : '배송'} 건으로 곧 도착 예정입니다.`;
+    // 받는 사람이 '누가·무슨 화물인지' 알 수 있게 화물·담당자 정보를 문자에 넣는다
+    const act = next.type === '상차' ? '상차' : '하차';
+    const who = [next.cargo, next.contactName ? next.contactName + ' 담당' : ''].filter(Boolean).join(' · ');
+    const arriveMsg = `안녕하세요, 화물 기사입니다.${who ? `\n[${who}]` : ''}\n이 건으로 ${act}하러 가는 길입니다. 약 5분 후 도착 예정입니다.`;
+
+    // 네이버로 남은 경로 전체(경유지 포함) 안내 버튼
+    const remaining = stops.filter(s => !(trip.events[s.id] && trip.events[s.id].doneAt));
+    const nf = naverFullRouteUrl(remaining);
+    const nbtn = $('#btn-naver-full');
+    if (nf) { nbtn.style.display = ''; nbtn.href = nf.url; }
+    else { nbtn.style.display = 'none'; }
+
     const contactHtml = next.phone ? `
       <div class="row gap" style="margin-bottom:8px">
         <a class="mini-btn" href="${telLink(next.phone)}">📞 ${esc(next.contactName || '담당자')} 전화</a>
         <a class="mini-btn" href="${smsLink(next.phone, arriveMsg)}">✉️ 곧 도착 문자</a>
       </div>` : '';
+    // 이 카드에서 바로 도착·완료 처리 → 완료하면 다음 목적지로 넘어간다
+    const nev = trip.events[next.id] || {};
+    const actionHtml = `
+      <div class="row gap" style="margin:4px 0 10px">
+        ${!nev.arrivedAt ? `<button class="btn secondary grow" data-act="arrive" data-id="${next.id}">📍 도착했어요</button>` : ''}
+        <button class="btn primary grow" data-act="done" data-id="${next.id}">✅ ${act} 끝 → 다음 목적지</button>
+      </div>`;
     $('#next-stop-info').innerHTML = `
       <div class="visit-name" style="font-size:17px;margin-bottom:8px">${idx + 1}. ${esc(next.label)}
         <span class="badge ${next.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${next.type}</span>${next.schedule ? ` <span class="badge sched" style="cursor:default">📅 ${esc(next.schedule)}</span>` : ''}</div>
       ${next.cargo ? `<div class="visit-meta" style="margin-bottom:8px">📦 ${esc(next.cargo)}</div>` : ''}
       ${next.notes && next.notes.length ? `<div class="visit-meta note" style="margin-bottom:8px">⚠️ ${next.notes.map(esc).join(' / ')}</div>` : ''}
+      ${actionHtml}
       ${contactHtml}`;
     $('#drive-navi').innerHTML = naviButtonsHtml(next);
   } else {
@@ -833,14 +859,14 @@ function renderDriveChecklist() {
         ${s.notes && s.notes.length && !ev.doneAt ? `<div class="visit-meta note">⚠️ ${s.notes.map(esc).join(' / ')}</div>` : ''}
       </div>
       <div class="visit-actions">
-        ${!ev.arrivedAt ? `<button class="mini-btn" data-act="arrive" data-id="${s.id}">📍 도착</button>` : ''}
-        ${ev.arrivedAt && !ev.doneAt ? `<button class="mini-btn" data-act="done" data-id="${s.id}">✅ ${s.type} 완료</button>` : ''}
+        ${ev.doneAt ? '' : `<button class="mini-btn" data-act="done" data-id="${s.id}">${s.type} 완료</button>`}
         ${s.phone ? `<a class="mini-btn" href="${telLink(s.phone)}" title="${esc(s.contactName || '담당자')} 전화">📞</a>` : ''}
         ${ev.doneAt && s.podPhone ? `<a class="mini-btn" href="${smsLink(s.podPhone, '안녕하세요, 화물 기사입니다. 인수증 사진 보내드립니다. (사진을 첨부해 주세요)')}">📸 인수증 전송</a>` : ''}
       </div>`;
     ul.appendChild(li);
   });
-  ul.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
+  // 다음 목적지 카드 + 체크리스트의 모든 도착·완료 버튼에 동작 연결
+  $('#drive-active').querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
     const ev = state.trip.events[b.dataset.id] || (state.trip.events[b.dataset.id] = {});
     if (b.dataset.act === 'arrive') ev.arrivedAt = Date.now();
     if (b.dataset.act === 'done') {
