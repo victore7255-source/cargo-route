@@ -15,7 +15,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="styles.css?v=20260721e">
+  <link rel="stylesheet" href="styles.css?v=20260721f">
   <script>
     // 첫 화면 깜빡임 방지: 저장된 테마를 그리기 전에 적용
     (function () {
@@ -31,7 +31,7 @@
     <div class="logo">🚚</div>
     <div class="header-text">
       <h1>화물 혼적 경로</h1>
-      <p class="tagline">AI 화물 운행 비서 · 방문 순서 자동 최적화</p>
+      <p class="tagline">혼적 경로 최적화 · 적재 계산</p>
     </div>
     <button class="theme-toggle" id="btn-theme" title="밝게/어둡게 전환">🌙</button>
   </div>
@@ -61,10 +61,10 @@
       <div id="install-guide" class="fine-print hidden"></div>
     </div>
 
-    <button class="btn secondary big hidden" id="btn-new-route">🆕 새 배차 시작 — 지금 입력한 것 지우기</button>
+    <button class="btn ghost full hidden" id="btn-new-route" style="margin-bottom:14px">🗑 지우고 새 배차 시작</button>
 
     <div class="card">
-      <h2 class="card-title">📍 출발지</h2>
+      <h2 class="card-title">출발지</h2>
       <div class="row gap">
         <input type="text" id="origin-input" class="input grow" placeholder="예) 서울 강서구 마곡동" autocomplete="off">
         <button class="btn secondary" id="btn-gps" title="현재 위치 사용">📡 현재위치</button>
@@ -73,7 +73,7 @@
     </div>
 
     <div class="card">
-      <h2 class="card-title">💬 문자 붙여넣기 <span class="hint">(화주·포워딩 문자 자동 인식)</span></h2>
+      <h2 class="card-title">문자 붙여넣기 <span class="hint">(화주·포워딩 문자 자동 인식)</span></h2>
       <div class="sched-picker" id="sched-picker">
         <span class="field-label">이번 배차 일정</span>
         <button class="chip active" data-sched="">문자에서 자동 인식</button>
@@ -86,7 +86,7 @@
     </div>
 
     <div class="card">
-      <h2 class="card-title">🎯 배송지 <span class="hint">(한 줄에 하나씩 여러 개 붙여넣기 가능)</span></h2>
+      <h2 class="card-title">배송지 <span class="hint">(한 줄에 하나씩 여러 개 붙여넣기 가능)</span></h2>
       <textarea id="stops-input" class="input textarea" rows="3" placeholder="예)&#10;서울 강남구 테헤란로 123&#10;성남시 분당구 판교역로 235&#10;수원시 영통구"></textarea>
       <div class="row gap top8">
         <button class="btn secondary grow" id="btn-add-stops">＋ 배송지 추가</button>
@@ -119,18 +119,18 @@
 
     <div id="result-area" class="hidden">
       <div class="card highlight">
-        <h2 class="card-title">✅ 최적 방문 순서</h2>
+        <h2 class="card-title">최적 방문 순서</h2>
         <div class="totals" id="result-totals"></div>
         <ol class="visit-list" id="visit-list"></ol>
       </div>
 
       <div class="card">
-        <h2 class="card-title">🗺️ 경로 지도</h2>
+        <h2 class="card-title">경로 지도</h2>
         <div id="map"></div>
       </div>
 
       <div class="card">
-        <h2 class="card-title">🤖 AI 운행 추천</h2>
+        <h2 class="card-title">AI 운행 추천</h2>
         <ul class="ai-tips" id="ai-tips"></ul>
       </div>
 
@@ -151,26 +151,26 @@
     <div id="drive-active" class="hidden">
       <div class="card highlight">
         <div class="row space-between">
-          <h2 class="card-title">🟢 운행 중</h2>
+          <h2 class="card-title accent">운행 중</h2>
           <div class="timer" id="drive-timer">00:00:00</div>
         </div>
         <div class="totals" id="drive-progress"></div>
       </div>
 
       <div class="card" id="next-stop-card">
-        <h2 class="card-title">➡️ 다음 목적지</h2>
+        <h2 class="card-title accent">다음 목적지</h2>
         <div id="next-stop-info"></div>
         <div class="navi-grid" id="drive-navi"></div>
         <a class="btn secondary full top8" id="btn-naver-full" href="#">🗺️ 네이버지도로 남은 경로 전체 안내 (경유지 포함)</a>
       </div>
 
       <div class="card">
-        <h2 class="card-title">📋 배송 체크리스트</h2>
+        <h2 class="card-title">배송 체크리스트</h2>
         <ul class="visit-list" id="drive-checklist"></ul>
       </div>
 
       <div class="card">
-        <h2 class="card-title">➕ 운행 중 화물 추가 <span class="hint">(새로 잡은 배차)</span></h2>
+        <h2 class="card-title">운행 중 화물 추가 <span class="hint">(새로 잡은 배차)</span></h2>
         <textarea id="drive-add-input" class="input textarea" rows="3" placeholder="새로 잡은 배차 문자를 통째로 붙여넣거나, 주소를 한 줄에 하나씩 입력하세요.&#10;현재 위치 기준으로 남은 경로를 다시 계산합니다."></textarea>
         <button class="btn secondary full top8" id="btn-drive-add">🔄 추가하고 남은 경로 다시 계산</button>
         <div id="drive-add-status" class="geo-status"></div>
@@ -183,7 +183,7 @@
   <!-- ══════════════ 적재 탭 ══════════════ -->
   <section class="panel" id="panel-cargo">
     <div class="card">
-      <h2 class="card-title">🚚 차량 선택 <span class="hint">(치수를 고쳐서 내 차량으로 저장 가능)</span></h2>
+      <h2 class="card-title">차량 선택 <span class="hint">(치수를 고쳐서 내 차량으로 저장 가능)</span></h2>
       <select id="truck-select" class="input"></select>
       <div class="grid3 top8">
         <label class="field"><span class="field-label">적재함 길이(cm)</span>
@@ -200,7 +200,7 @@
     </div>
 
     <div class="card">
-      <h2 class="card-title">📦 화물 목록 <span class="hint">(문자 붙여넣기 시 자동 수집 · 직접 추가 가능)</span></h2>
+      <h2 class="card-title">화물 목록 <span class="hint">(문자 붙여넣기 시 자동 수집 · 직접 추가 가능)</span></h2>
       <ul class="stop-list" id="cargo-item-list"></ul>
       <div class="field top8">
         <span class="field-label">종류</span>
@@ -230,7 +230,7 @@
     </div>
 
     <div class="card highlight hidden" id="cargo-result">
-      <h2 class="card-title">📊 적재 계산 결과</h2>
+      <h2 class="card-title">적재 계산 결과</h2>
       <div id="cargo-output"></div>
     </div>
   </section>
@@ -244,9 +244,9 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="geo.js?v=20260721e"></script>
-<script src="sms.js?v=20260721e"></script>
-<script src="route.js?v=20260721e"></script>
-<script src="app.js?v=20260721e"></script>
+<script src="geo.js?v=20260721f"></script>
+<script src="sms.js?v=20260721f"></script>
+<script src="route.js?v=20260721f"></script>
+<script src="app.js?v=20260721f"></script>
 </body>
 </html>

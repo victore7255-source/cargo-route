@@ -89,23 +89,23 @@ body {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 
-/* ── 헤더 ── */
-.app-header { padding: 26px 18px 18px; }
+/* ── 헤더 (슬림) ── */
+.app-header { padding: 18px 16px 12px; }
 .header-inner {
   max-width: 640px; margin: 0 auto;
-  display: flex; align-items: center; gap: 13px;
+  display: flex; align-items: center; gap: 11px;
 }
 .logo {
-  width: 52px; height: 52px; flex-shrink: 0;
+  width: 44px; height: 44px; flex-shrink: 0;
   background: linear-gradient(140deg, var(--brand), var(--brand-deep));
-  border-radius: 15px;
+  border-radius: 13px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 27px;
+  font-size: 23px;
   box-shadow: var(--shadow-btn);
 }
 .header-text { flex: 1; min-width: 0; }
-h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink); }
-.tagline { font-size: 13px; color: var(--ink-dim); letter-spacing: -0.01em; }
+h1 { font-size: 19px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink); }
+.tagline { font-size: 12.5px; color: var(--ink-dim); letter-spacing: -0.01em; margin-top: 1px; }
 .theme-toggle {
   width: 40px; height: 40px; flex-shrink: 0;
   border: 1px solid var(--line); border-radius: 999px;
@@ -140,7 +140,7 @@ h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; color: var(--in
 .tab.active { color: var(--on-brand); background: linear-gradient(140deg, var(--brand), var(--brand-deep)); }
 
 /* ── 레이아웃 ── */
-.container { max-width: 640px; margin: 0 auto; padding: 18px 14px 30px; }
+.container { max-width: 640px; margin: 0 auto; padding: 14px 14px 30px; }
 .panel { display: none; }
 .panel.active { display: block; animation: rise .35s ease both; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -150,13 +150,15 @@ h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; color: var(--in
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 18px;
-  margin-bottom: 14px;
+  padding: 16px;
+  margin-bottom: 12px;
   box-shadow: var(--shadow);
 }
 .card.highlight { border-color: var(--brand); }
-.card-title { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; }
-.hint { font-size: 13px; color: var(--ink-dim); font-weight: 500; }
+/* 제목은 '라벨'처럼 조용하게 — 내용과 버튼이 돋보이도록 위계 정리 */
+.card-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 11px; color: var(--ink-dim); }
+.card-title.accent { color: var(--brand); font-size: 16px; }
+.hint { font-size: 12.5px; color: var(--ink-dim); font-weight: 500; }
 .center-card { text-align: center; padding: 40px 16px; color: var(--ink-dim); }
 .big-emoji { font-size: 46px; margin-bottom: 10px; }
 
@@ -224,7 +226,7 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 .btn.secondary:hover { filter: brightness(0.97); }
 .btn.ghost { background: transparent; border: 1.5px solid var(--line); color: var(--ink-dim); }
 .btn.danger { background: linear-gradient(140deg, #d64545, #b93333); color: #fff; box-shadow: 0 6px 18px rgba(199, 62, 62, .25); }
-.btn.big { width: 100%; font-size: 17px; font-weight: 800; padding: 16px; margin-bottom: 14px; border-radius: 15px; }
+.btn.big { width: 100%; font-size: 17px; font-weight: 800; padding: 16px; margin-bottom: 12px; border-radius: 15px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ── 배송지 리스트 (블록 레이아웃: 주소·정보를 카드 전체 폭으로) ── */
