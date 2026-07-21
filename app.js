@@ -155,14 +155,26 @@ $('#stops-input').addEventListener('keydown', (e) => {
     addStopsFromInput();
   }
 });
-$('#btn-clear-stops').addEventListener('click', () => {
-  if (!state.stops.length) return;
-  if (!confirm('배송지를 모두 삭제할까요?')) return;
-  state.stops = [];
+// 입력한 배송지나 계산된 경로가 있을 때만 맨 위에 "새 배차 시작" 버튼을 보여준다
+function updateNewRouteBtn() {
+  const has = (state.stops && state.stops.length) || state.result;
+  $('#btn-new-route').classList.toggle('hidden', !has);
+}
+$('#btn-new-route').addEventListener('click', () => {
+  if (!confirm('지금 입력한 배송지와 경로를 지우고 새 배차를 시작할까요?\n(내일 예정 배송지는 남습니다)')) return;
+  const futureCount = state.stops.filter(isFutureStop).length;
+  state.stops = state.stops.filter(isFutureStop);   // 내일 예정 지점은 보존
   state.result = null;
   $('#result-area').classList.add('hidden');
-  renderStops();
+  $('#sms-input').value = '';
+  $('#stops-input').value = '';
+  $('#sms-preview').classList.add('hidden');
   saveState();
+  renderStops();
+  toast(futureCount
+    ? `🆕 새 배차를 입력하세요. (예정 배송지 ${futureCount}곳은 남겨뒀습니다)`
+    : '🆕 새 배차를 입력하세요', 4000);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
 async function addStopsFromInput() {
@@ -284,11 +296,14 @@ function renderSmsPreview() {
       const notes = (s.notes && s.notes.length)
         ? `<br>⚠️ <span class="note">${s.notes.map(esc).join(' / ')}</span>` : '';
       return `
-      <li class="stop-item">
-        <span>💬</span>
-        <span class="label">${esc(s.address)}<span class="sub">${sub || '추출된 부가정보 없음'}${notes}</span></span>
-        <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-sms-type="${i}" title="눌러서 상차/하차 전환">${s.type}</button>
-        <button class="icon-btn" data-sms-del="${i}" title="제외">✕</button>
+      <li class="stop-item ${s.type === '상차' ? 'load' : 'unload'}">
+        <div class="si-head">
+          <span class="si-icon">💬</span>
+          <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-sms-type="${i}" title="눌러서 상차/하차 전환">${s.type}</button>
+          <button class="icon-btn si-del" data-sms-del="${i}" title="제외">✕</button>
+        </div>
+        <div class="si-text">${esc(s.address)}</div>
+        <div class="sub">${sub || '추출된 부가정보 없음'}${notes}</div>
       </li>`;
     }).join('')
     + '</ul>'
@@ -361,7 +376,7 @@ function renderStops() {
   const makeLi = ({ s, i }, isFuture) => {
     const li = document.createElement('li');
     li.dataset.i = i;
-    li.className = 'stop-item' + (s.status === 'error' ? ' error' : '') + (isFuture ? ' future' : '');
+    li.className = 'stop-item ' + (s.type === '상차' ? 'load' : 'unload') + (s.status === 'error' ? ' error' : '') + (isFuture ? ' future' : '');
     const statusIcon = s.status === 'pending' ? '⏳' : s.status === 'error' ? '⚠️' : isFuture ? '📅' : '📍';
     const info = [
       s.schedule && !s.visitDate ? '📅 ' + s.schedule : '',
@@ -372,16 +387,17 @@ function renderStops() {
     ].filter(Boolean).map(esc).join(' · ');
     const notes = (s.notes && s.notes.length)
       ? `<br>⚠️ <span class="note">${s.notes.map(esc).join(' / ')}</span>` : '';
-    // 날짜 배지는 오른쪽이 아니라 주소 아래 줄에 넣는다 (오른쪽에 몰리면 주소 칸이 좁아짐)
     const dateBadge = s.visitDate
-      ? `<button class="badge sched inline" data-act="date" data-i="${i}" title="눌러서 방문 날짜 변경">📅 ${fmtDateK(s.visitDate)}</button> ` : '';
+      ? `<button class="badge sched" data-act="date" data-i="${i}" title="눌러서 방문 날짜 변경">📅 ${fmtDateK(s.visitDate)}</button>` : '';
     li.innerHTML = `
-      <span>${statusIcon}</span>
-      <span class="label">${esc(s.label)}
-        <span class="sub">${dateBadge}${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(shortDisplay(s.display))}${info ? '<br>' + info : ''}${notes}</span>
-      </span>
-      <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-act="type" data-i="${i}">${s.type}</button>
-      <button class="icon-btn" data-act="del" data-i="${i}" title="삭제">✕</button>`;
+      <div class="si-head">
+        <span class="si-icon">${statusIcon}</span>
+        <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-act="type" data-i="${i}">${s.type}</button>
+        ${dateBadge}
+        <button class="icon-btn si-del" data-act="del" data-i="${i}" title="삭제">✕</button>
+      </div>
+      <div class="si-text">${esc(s.label)}</div>
+      <div class="sub">${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(shortDisplay(s.display))}${info ? '<br>' + info : ''}${notes}</div>`;
     return li;
   };
 
@@ -421,7 +437,7 @@ function renderStops() {
     renderStops(); saveState();
   }));
   ul.querySelectorAll('.stop-item.error').forEach(li => {
-    const el = li.querySelector('.label');
+    const el = li.querySelector('.si-text');
     el.style.cursor = 'pointer';
     el.addEventListener('click', async () => {
       const stop = state.stops[+li.dataset.i];
@@ -436,6 +452,7 @@ function renderStops() {
     });
   });
   renderFinalDestSelect();
+  updateNewRouteBtn();
 }
 
 function renderFinalDestSelect() {
@@ -603,6 +620,7 @@ function renderResult() {
 
   renderMap();
   renderAiTips();
+  updateNewRouteBtn();
 }
 
 // ─────────── 지도 ───────────
@@ -1094,18 +1112,22 @@ function addCargoItems(items, fromLabel) {
 function renderCargoItems() {
   const ul = $('#cargo-item-list');
   if (!cargoItems.length) {
-    ul.innerHTML = '<li class="stop-item"><span>📭</span><span class="label">담긴 화물이 없습니다<span class="sub">문자를 붙여넣으면 치수·수량이 자동으로 담깁니다</span></span></li>';
+    ul.innerHTML = '<li class="stop-item"><div class="si-head"><span class="si-icon">📭</span></div><div class="si-text">담긴 화물이 없습니다</div><div class="sub">문자를 붙여넣으면 치수·수량이 자동으로 담깁니다</div></li>';
     return;
   }
-  ul.innerHTML = cargoItems.map((it, i) => `
+  ul.innerHTML = cargoItems.map((it, i) => {
+    const sub = [it.from ? '출처: ' + it.from : '', it.kind === 'plt' ? (it.stack >= 2 ? '2단 허용' : '1단(기본)') : ''].filter(Boolean).map(esc).join(' · ');
+    return `
     <li class="stop-item">
-      <span>${it.kind === 'plt' ? '🟫' : '📦'}</span>
-      <span class="label">${esc(itemLabel(it))}
-        <span class="sub">${[it.from ? '출처: ' + it.from : '', it.kind === 'plt' ? (it.stack >= 2 ? '2단 허용' : '1단(기본)') : ''].filter(Boolean).map(esc).join(' · ')}</span>
-      </span>
-      ${it.kind === 'plt' ? `<button class="badge ${it.stack >= 2 ? 'load' : 'unload'}" data-item-stack="${i}" title="파레트 겹침 허용 전환">${it.stack >= 2 ? '2단' : '1단'}</button>` : ''}
-      <button class="icon-btn" data-item-del="${i}" title="삭제">✕</button>
-    </li>`).join('');
+      <div class="si-head">
+        <span class="si-icon">${it.kind === 'plt' ? '🟫' : '📦'}</span>
+        ${it.kind === 'plt' ? `<button class="badge ${it.stack >= 2 ? 'load' : 'unload'}" data-item-stack="${i}" title="파레트 겹침 허용 전환">${it.stack >= 2 ? '2단' : '1단'}</button>` : ''}
+        <button class="icon-btn si-del" data-item-del="${i}" title="삭제">✕</button>
+      </div>
+      <div class="si-text">${esc(itemLabel(it))}</div>
+      ${sub ? `<div class="sub">${sub}</div>` : ''}
+    </li>`;
+  }).join('');
   ul.querySelectorAll('[data-item-stack]').forEach(b => b.addEventListener('click', () => {
     const it = cargoItems[+b.dataset.itemStack];
     it.stack = it.stack >= 2 ? 1 : 2;
