@@ -998,12 +998,20 @@ async function driveAddStops() {
 }
 
 $('#btn-end-trip').addEventListener('click', () => {
-  if (!confirm('운행을 종료할까요?')) return;
+  if (!confirm('운행을 종료할까요?\n(끝난 배송지와 경로 결과는 지워지고, 새 경로를 바로 입력할 수 있어요. 내일 예정 배송지는 남습니다.)')) return;
   state.trip = null;
+  // 끝난 경로 정리 — 내일 이후 예정(당상내착 등) 지점만 남기고 오늘 것과 결과는 비운다
+  const futureCount = state.stops.filter(isFutureStop).length;
+  state.stops = state.stops.filter(isFutureStop);
+  state.result = null;
+  $('#result-area').classList.add('hidden');
   saveState();
+  renderStops();
   renderDrive();
   switchTab('route');
-  toast('🏁 운행을 종료했습니다. 수고하셨습니다!');
+  toast(futureCount
+    ? `🏁 운행 종료 — 새 경로를 입력하세요. (예정 배송지 ${futureCount}곳은 남겨뒀습니다)`
+    : '🏁 운행을 종료했습니다. 새 경로를 입력하세요. 수고하셨습니다!', 5000);
 });
 
 // ─────────── 적재 계산 ───────────
