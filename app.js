@@ -115,7 +115,7 @@ function switchTab(name) {
   $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
   if (name === 'history') renderHistory();
   if (name === 'drive') renderDrive();
-  if (name === 'settle') renderSettle();
+  if (name === 'ev') renderEvIfReady();
   if (name === 'route' && map) setTimeout(() => map.invalidateSize(), 100);
 }
 
@@ -370,8 +370,7 @@ function renderStops() {
   const makeLi = ({ s, i }, isFuture) => {
     const li = document.createElement('li');
     li.dataset.i = i;
-    li.className = 'stop-item ' + (s.type === '상차' ? 'load' : 'unload')
-      + (s.status === 'error' ? ' error' : '') + (isFuture ? ' future' : '');
+    li.className = 'stop-item' + (s.status === 'error' ? ' error' : '') + (isFuture ? ' future' : '');
     const statusIcon = s.status === 'pending' ? '⏳' : s.status === 'error' ? '⚠️' : isFuture ? '📅' : '📍';
     const info = [
       s.schedule && !s.visitDate ? '📅 ' + s.schedule : '',
@@ -598,13 +597,12 @@ function renderResult() {
     const stop = state.stops[stopIdx];
     const sch = res.schedule[i];
     const li = document.createElement('li');
-    li.className = 'visit-item ' + (stop.type === '상차' ? 'load' : 'unload');
+    li.className = 'visit-item';
     li.innerHTML = `
       <div class="visit-num">${i + 1}</div>
       <div class="visit-body">
         <div class="visit-name">${esc(stop.label)} <span class="badge ${stop.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${stop.type}</span>${stop.schedule ? ` <span class="badge sched" style="cursor:default">📅 ${esc(stop.schedule)}</span>` : ''}</div>
-        <div class="visit-meta"><span class="visit-arrive">🕐 ${fmtTime(new Date(sch.arrive))} 도착</span></div>
-        <div class="visit-meta">작업 ${stop.workMin}분 · ${fmtTime(new Date(sch.depart))} 출발</div>
+        <div class="visit-meta">도착 ${fmtTime(new Date(sch.arrive))} · 작업 ${stop.workMin}분 · 출발 ${fmtTime(new Date(sch.depart))}</div>
         ${stop.cargo || stop.phone ? `<div class="visit-meta">${[stop.cargo ? '📦 ' + stop.cargo : '', stop.phone ? '📞 ' + (stop.contactName ? stop.contactName + ' ' : '') + stop.phone : ''].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
         ${stop.notes && stop.notes.length ? `<div class="visit-meta note">⚠️ ${stop.notes.map(esc).join(' / ')}</div>` : ''}
         <div class="visit-leg">↳ 이동 ${fmtKm(sch.legDistance)} · ${fmtDur(sch.legDuration)}${sch.factor && sch.factor > 1.25 ? ' <b>(정체 시간대)</b>' : ''}</div>
@@ -615,6 +613,7 @@ function renderResult() {
   renderMap();
   renderAiTips();
   renderNaviButtons($('#navi-buttons'), 0);
+  renderEvIfReady();
 }
 
 // ─────────── 지도 ───────────
@@ -634,7 +633,7 @@ function renderMap() {
 
   const mk = (p, text, cls) => {
     const m = L.marker([p.lat, p.lng], {
-      icon: L.divIcon({ className: 'map-marker ' + cls, html: text, iconSize: [38, 38], iconAnchor: [19, 19] }),
+      icon: L.divIcon({ className: 'map-marker ' + cls, html: text, iconSize: [26, 26] }),
     }).addTo(map);
     mapLayers.push(m);
   };
@@ -684,6 +683,14 @@ async function renderAiTips() {
   const unloads = state.stops.filter(s => s.type === '하차').length;
   if (loads && unloads) {
     tips.push({ icon: '📦', text: `상차 ${loads}곳 · 하차 ${unloads}곳 혼적 운행입니다. 상차지에서 하차 순서 역순으로 싣으면(나중에 내릴 짐을 안쪽에) 하차가 빨라집니다.` });
+  }
+
+  // EV 잔량 체크
+  const ev = loadEvSettings();
+  if (ev && ev.range > 0) {
+    if (ev.range < (res.distance / 1000) * 1.15) {
+      tips.push({ icon: '🔋', text: `계기판 주행가능거리 약 ${Math.round(ev.range)}km — 이번 경로(${fmtKm(res.distance)})에 충전이 필요할 수 있습니다. EV 탭에서 충전 계획을 확인하세요.` });
+    }
   }
 
   ul.innerHTML = tips.map(t => `<li data-icon="${t.icon}">${esc(t.text)}</li>`).join('');
@@ -834,7 +841,7 @@ function renderDriveChecklist() {
   stops.forEach((s, i) => {
     const ev = trip.events[s.id] || {};
     const li = document.createElement('li');
-    li.className = 'visit-item ' + (s.type === '상차' ? 'load' : 'unload');
+    li.className = 'visit-item';
     const waitMin = (ev.arrivedAt && ev.doneAt) ? Math.round((ev.doneAt - ev.arrivedAt) / 60000) : null;
     let meta = '';
     if (ev.arrivedAt) meta += `도착 ${fmtTime(new Date(ev.arrivedAt))}`;
@@ -1031,14 +1038,8 @@ $('#btn-save-trip').addEventListener('click', () => {
   state.trip = null;
   saveState();
   renderDrive();
-  // 운행이 끝났으니 바로 정산(운송비)에 등록할지 물어본다
-  if (confirm('운행 기록을 저장했습니다.\n이 운행의 운송비를 정산에 등록할까요? (업체·금액 입력)')) {
-    switchTab('settle');
-    importTripToSettle(record);
-  } else {
-    switchTab('history');
-    toast('💾 운행 기록을 저장했습니다');
-  }
+  switchTab('history');
+  toast('💾 운행 기록을 저장했습니다');
 });
 
 $('#btn-discard-trip').addEventListener('click', () => {
@@ -1102,6 +1103,116 @@ $('#btn-export-history').addEventListener('click', () => {
   URL.revokeObjectURL(a.href);
 });
 
+// ─────────── EV ───────────
+const EV_KEY = 'cargo-ev-v2';
+
+function loadEvSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(EV_KEY) || 'null');
+    if (saved && saved.range > 0) return saved;
+    // 구버전(배터리용량·전비 방식) 데이터 이전
+    const old = JSON.parse(localStorage.getItem('cargo-ev-v1') || 'null');
+    if (old && old.capacity && old.efficiency && old.battery) {
+      return { range: Math.round(old.capacity * (old.battery / 100) * old.efficiency), battery: old.battery };
+    }
+    return null;
+  } catch (e) { return null; }
+}
+function saveEvSettings() {
+  localStorage.setItem(EV_KEY, JSON.stringify({
+    range: parseFloat($('#ev-range').value) || 0,
+    battery: parseFloat($('#ev-battery').value) || null,
+  }));
+}
+
+function initEv() {
+  const saved = loadEvSettings();
+  if (saved) {
+    $('#ev-range').value = saved.range || '';
+    $('#ev-battery').value = saved.battery || '';
+  }
+}
+
+$('#btn-calc-ev').addEventListener('click', () => {
+  if (!(parseFloat($('#ev-range').value) > 0)) {
+    toast('계기판에 표시된 주행가능거리(km)를 입력해 주세요');
+    return;
+  }
+  saveEvSettings();
+  renderEv();
+});
+
+function renderEvIfReady() {
+  const ev = loadEvSettings();
+  if (ev && ev.range > 0 && state.result) {
+    $('#ev-range').value = ev.range;
+    if (ev.battery) $('#ev-battery').value = ev.battery;
+    renderEv();
+  }
+}
+
+function renderEv() {
+  const range = parseFloat($('#ev-range').value) || 0;
+  let battery = parseFloat($('#ev-battery').value) || null;
+  if (battery != null) battery = Math.min(100, Math.max(1, battery));
+  const SAFE = 0.85; // 계기판 표시치의 오차·우회를 감안한 15% 여유
+
+  const rows = [
+    ['현재 주행가능거리 (계기판)', `${Math.round(range)}km`],
+    ['안전 주행거리 (15% 여유)', `약 ${Math.round(range * SAFE)}km`],
+  ];
+  if (battery) rows.push(['현재 배터리', `${battery}%`]);
+  let verdict = '';
+  let extraHtml = '';
+
+  if (state.result) {
+    const totalKm = state.result.distance / 1000;
+    const remainKm = range - totalKm;
+    // 계기판 거리는 현재 잔량 기준이므로, 경로만큼 달리면 그 비율만큼 배터리를 쓴다
+    const endPct = battery ? battery * (1 - totalKm / range) : null;
+    rows.push(['이번 경로 거리', fmtKm(state.result.distance)]);
+    rows.push(['완주 시 남는 거리', remainKm > 0 ? `약 ${Math.round(remainKm)}km` : '부족']);
+    if (endPct != null) rows.push(['도착 시 배터리 (예상)', endPct > 0 ? `약 ${Math.round(endPct)}%` : '방전']);
+
+    if (totalKm <= range * SAFE) {
+      verdict = `<div class="verdict ok">✅ 충전 없이 완주 가능 — 도착 후에도 약 ${Math.round(remainKm)}km 여유${endPct != null ? ` (배터리 약 ${Math.round(endPct)}%)` : ''}</div>`;
+    } else {
+      // 어느 지점에서 충전이 필요한지 계산
+      let cum = 0, chargeBeforeIdx = -1;
+      const safeKm = range * SAFE;
+      const stops = orderedStops();
+      for (let i = 0; i < state.result.legs.length; i++) {
+        cum += state.result.legs[i].distance / 1000;
+        if (cum > safeKm) { chargeBeforeIdx = i; break; }
+      }
+      const where = chargeBeforeIdx >= 0 && stops[chargeBeforeIdx]
+        ? `<b>${chargeBeforeIdx + 1}번째 목적지(${esc(stops[chargeBeforeIdx].label)})</b> 도착 전`
+        : '경로 후반부';
+      verdict = totalKm <= range
+        ? `<div class="verdict warn">⚠️ 아슬아슬하게 완주 가능 (여유 약 ${Math.round(remainKm)}km) — ${where} 충전을 권장합니다</div>`
+        : `<div class="verdict bad">🔴 충전 없이 완주 불가 (약 ${Math.round(-remainKm)}km 부족) — ${where} 반드시 충전하세요</div>`;
+
+      const chargePoint = chargeBeforeIdx > 0 && stops[chargeBeforeIdx - 1]
+        ? stops[chargeBeforeIdx - 1] : state.origin;
+      const q = encodeURIComponent('전기차충전소');
+      extraHtml += `
+        <div class="navi-grid top8">
+          <a class="navi-btn kakao" href="kakaomap://search?q=${q}&p=${chargePoint.lat},${chargePoint.lng}">카카오맵<br>충전소 검색</a>
+          <a class="navi-btn tmap" href="tmap://search?name=${q}">TMAP<br>충전소 검색</a>
+          <a class="navi-btn naver" href="nmap://search?query=${q}&appname=cargo.route.web">네이버<br>충전소 검색</a>
+        </div>
+        <p class="fine-print">충전 지점 근처(${esc(chargePoint.label || '출발지')})에서 급속충전소를 검색합니다. 충전 후 계기판의 주행가능거리를 다시 입력하고 [충전 계획 분석]을 누르면 재계산됩니다.</p>`;
+    }
+  } else {
+    verdict = '<div class="verdict warn">경로를 먼저 계산하면 이번 운행의 충전 필요 여부를 분석해 드립니다.</div>';
+  }
+
+  $('#ev-output').innerHTML = verdict
+    + '<table class="result-table">' + rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('') + '</table>'
+    + extraHtml;
+  $('#ev-result').classList.remove('hidden');
+}
+
 // ─────────── 적재 계산 ───────────
 const TRUCK_KEY = 'cargo-truck-v1';
 const ITEMS_KEY = 'cargo-items-v1';
@@ -1152,7 +1263,7 @@ function updateTruckCbm() {
   const l = parseFloat($('#truck-l').value), w = parseFloat($('#truck-w').value), h = parseFloat($('#truck-h').value);
   const el = $('#truck-cbm');
   if (l > 0 && w > 0 && h > 0) {
-    el.innerHTML = `📐 적재함 부피: <b>${(l * w * h / 1e6).toFixed(2)} CBM(㎥)</b> (${l} × ${w} × ${h}cm)`;
+    el.innerHTML = `📐 적재함 용적: <b>${(l * w * h / 1e6).toFixed(2)} CBM</b> (${l} × ${w} × ${h}cm)`;
   } else {
     el.textContent = '';
   }
@@ -1418,7 +1529,7 @@ $('#btn-calc-cargo').addEventListener('click', () => {
     return [itemLabel(r.it), txt];
   });
   rows.push(['바닥 길이 합계', `${Math.round(usedLen)}cm / ${TL}cm (${Math.min(999, lenRate).toFixed(0)}%)`]);
-  rows.push(['실은 화물 부피', `${loadedCbm.toFixed(2)} / 적재함 ${(TL * TW * TH / 1e6).toFixed(2)} CBM(㎥)`]);
+  rows.push(['실은 화물 부피', `${loadedCbm.toFixed(2)} CBM / 적재함 ${(TL * TW * TH / 1e6).toFixed(2)} CBM`]);
   rows.push(['남은 공간', remainLen >= 1
     ? `길이 ${Math.round(remainLen)} × 폭 ${TW} × 높이 ${TH}cm = <b>${remainCbm.toFixed(2)} CBM</b>`
     : '없음']);
@@ -1456,310 +1567,6 @@ function seedDemo() {
   departAt.setHours(9, 0, 0, 0);
   state.result = { ...res, departAt: departAt.getTime(), schedule: buildSchedule(res, departAt) };
   state.trip = null;
-}
-
-// ─────────── 정산 관리 ───────────
-let settleCal = { y: null, m: null };   // 달력이 보고 있는 연/월
-let settleUnpaidOnly = false;
-
-function fmtDateShort(iso) {
-  if (!iso) return '-';
-  const [, m, d] = iso.split('-');
-  return `${+m}/${+d}`;
-}
-
-function initSettle() {
-  $('#sf-pay').innerHTML = Settle.PAY_METHODS.map(p => `<option value="${p}">${p}</option>`).join('');
-  $('#btn-settle-add').addEventListener('click', () => openSettleForm(null));
-  $('#btn-settle-cancel').addEventListener('click', closeSettleForm);
-  $('#btn-settle-save').addEventListener('click', saveSettleForm);
-  $('#btn-settle-delete').addEventListener('click', deleteSettleForm);
-  $('#settle-period').addEventListener('change', renderSettle);
-  $('#settle-search').addEventListener('input', renderSettleList);
-  $('#settle-unpaid-only').addEventListener('click', () => {
-    settleUnpaidOnly = !settleUnpaidOnly;
-    $('#settle-unpaid-only').classList.toggle('active', settleUnpaidOnly);
-    renderSettleList();
-  });
-  ['#sf-amount', '#sf-fee', '#sf-tax'].forEach(s => $(s).addEventListener('input', updateSettleCalc));
-  $('#sf-tax').addEventListener('change', () => {
-    $('#sf-taxdate-wrap').style.display = $('#sf-tax').value ? '' : 'none';
-    updateSettleCalc();
-  });
-  $('#cal-prev').addEventListener('click', () => { shiftCalMonth(-1); });
-  $('#cal-next').addEventListener('click', () => { shiftCalMonth(1); });
-  $('#btn-settle-import').addEventListener('click', toggleTripPicker);
-}
-
-// ── 운행 기록 → 정산 연동 ──
-/** 아직 정산에 등록되지 않은 운행 기록 목록 */
-function unlinkedTrips() {
-  const linked = new Set(Settle.all().map(r => r.fromTrip).filter(Boolean));
-  return getHistory().filter(h => !linked.has(h.id));
-}
-function toggleTripPicker() {
-  const box = $('#settle-trip-picker');
-  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
-  const trips = unlinkedTrips();
-  if (!trips.length) {
-    toast('가져올 운행 기록이 없습니다 (이미 모두 등록됐거나 저장된 운행이 없어요)');
-    return;
-  }
-  box.innerHTML = '<ul class="stop-list top8">'
-    + trips.map(h => {
-      const last = h.stops && h.stops.length ? h.stops[h.stops.length - 1].label : '';
-      const d = new Date(h.date);
-      return `<li class="stop-item" data-trip="${h.id}" style="cursor:pointer">
-        <span>🚛</span>
-        <span class="label">${esc(h.origin)}${last ? ' → ' + esc(last) : ''}
-          <span class="sub">${d.getMonth() + 1}/${d.getDate()} · ${h.stops.length}곳 · ${fmtKm(h.distance)}</span></span>
-        <span class="badge st-due">가져오기</span>
-      </li>`;
-    }).join('') + '</ul>';
-  box.classList.remove('hidden');
-  box.querySelectorAll('[data-trip]').forEach(li => li.addEventListener('click', () => {
-    const h = getHistory().find(x => x.id === li.dataset.trip);
-    if (h) importTripToSettle(h);
-  }));
-}
-function importTripToSettle(h) {
-  $('#settle-trip-picker').classList.add('hidden');
-  const last = h.stops && h.stops.length ? h.stops[h.stops.length - 1].label : '';
-  openSettleForm(null, {
-    origin: h.origin || '',
-    dest: last || '',
-    shipDate: (h.date || '').slice(0, 10),
-    memo: `운행기록 ${new Date(h.date).getMonth() + 1}/${new Date(h.date).getDate()}`,
-    fromTrip: h.id,
-  });
-  toast('🚛 운행 정보를 불러왔습니다. 업체명과 운송금액을 입력하세요.');
-}
-
-function shiftCalMonth(delta) {
-  let m = settleCal.m + delta, y = settleCal.y;
-  if (m < 0) { m = 11; y -= 1; }
-  if (m > 11) { m = 0; y += 1; }
-  settleCal = { y, m };
-  renderSettleCalendar();
-}
-
-function renderSettle() {
-  if (settleCal.y == null) {
-    const [y, m] = Settle.today().split('-').map(Number);
-    settleCal = { y, m: m - 1 };
-  }
-  renderSettleSummary();
-  renderSettleCalendar();
-  renderSettleList();
-  renderSettleCompanies();
-}
-
-function renderSettleSummary() {
-  const period = $('#settle-period').value;
-  const list = Settle.all().filter(r => Settle.inRange(r, period));
-  const s = Settle.summarize(list);
-  const chips = [
-    ['운송 건수', `${s.count}건`],
-    ['총 운송금액', fmtWon(s.amount)],
-    ['입금 완료', fmtWon(s.received)],
-    ['미수금', fmtWon(s.unpaid)],
-  ];
-  if (period === 'month' || period === 'all') {
-    chips.push(['수수료', fmtWon(s.fee)]);
-    chips.push(['계산서 발행', fmtWon(s.taxIssued)]);
-  }
-  $('#settle-summary').innerHTML = chips.map(c =>
-    `<div class="total-chip"><div class="v">${c[1]}</div><div class="k">${c[0]}</div></div>`).join('');
-
-  const totalUnpaid = Settle.unpaidTotal();
-  $('#settle-unpaid-banner').innerHTML = totalUnpaid > 0
-    ? `<div class="verdict bad" style="margin-top:10px">🔴 아직 못 받은 돈(전체) <b>${fmtWon(totalUnpaid)}</b> — 아래 [미수금만]으로 확인하세요</div>`
-    : `<div class="verdict ok" style="margin-top:10px">✅ 미수금 없음 — 모든 운송비를 받았습니다</div>`;
-}
-
-const KDAYS = ['일', '월', '화', '수', '목', '금', '토'];
-function renderSettleCalendar() {
-  const { y, m } = settleCal;
-  $('#cal-label').textContent = `${y}.${String(m + 1).padStart(2, '0')}`;
-  const map = Settle.expectedByDate(y, m);
-  const first = new Date(y, m, 1).getDay();
-  const days = new Date(y, m + 1, 0).getDate();
-  const monthTotal = Object.values(map).reduce((a, x) => a + x.total, 0);
-
-  let html = '<div class="cal-grid">'
-    + KDAYS.map((d, i) => `<div class="cal-head ${i === 0 ? 'sun' : ''}">${d}</div>`).join('');
-  for (let i = 0; i < first; i++) html += '<div class="cal-cell empty"></div>';
-  const todayIso = Settle.today();
-  for (let d = 1; d <= days; d++) {
-    const iso = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const info = map[iso];
-    const isToday = iso === todayIso;
-    html += `<button class="cal-cell${info ? ' has' : ''}${isToday ? ' today' : ''}" data-cal="${iso}">
-      <span class="cal-d">${d}</span>
-      ${info ? `<span class="cal-amt">${Math.round(info.total / 10000)}만</span>` : ''}
-    </button>`;
-  }
-  html += '</div>';
-  html += `<p class="fine-print">📅 이번 달 입금 예정 합계: <b>${fmtWon(monthTotal)}</b> · 날짜를 누르면 상세가 보입니다</p>`;
-  $('#settle-calendar').innerHTML = html;
-  $('#settle-calendar').querySelectorAll('[data-cal]').forEach(b =>
-    b.addEventListener('click', () => showCalDetail(b.dataset.cal, map[b.dataset.cal])));
-  $('#settle-calendar-detail').innerHTML = '';
-}
-
-function showCalDetail(iso, info) {
-  const box = $('#settle-calendar-detail');
-  if (!info) {
-    box.innerHTML = `<div class="cal-detail"><b>${fmtDateShort(iso)}</b> 입금 예정 없음</div>`;
-    return;
-  }
-  box.innerHTML = `<div class="cal-detail">
-    <div class="row space-between"><b>${fmtDateShort(iso)} 입금 예정</b><b style="color:var(--brand)">${fmtWon(info.total)}</b></div>
-    ${info.list.map(r => `<div class="row space-between" style="margin-top:6px">
-      <span>${esc(r.company || '미지정')}</span><span>${fmtWon(Settle.expectedAmount(r))}</span></div>`).join('')}
-  </div>`;
-}
-
-function settleStatusBadge(r) {
-  const st = Settle.STATUS[Settle.statusOf(r)];
-  return `<span class="badge settle-badge ${st.cls}">${st.dot} ${st.label}</span>`;
-}
-
-function renderSettleList() {
-  const q = ($('#settle-search').value || '').trim();
-  const period = $('#settle-period').value;
-  let list = Settle.all().filter(r => Settle.inRange(r, period));
-  if (settleUnpaidOnly) list = list.filter(Settle.isUnpaid);
-  if (q) list = list.filter(r => [r.company, r.origin, r.dest, r.memo].some(x => (x || '').includes(q)));
-  list.sort((a, b) => (b.shipDate || '').localeCompare(a.shipDate || ''));
-
-  const ul = $('#settle-list');
-  if (!list.length) {
-    ul.innerHTML = `<li class="stop-item" style="justify-content:center;color:var(--ink-dim)">${settleUnpaidOnly ? '미수금이 없습니다 👍' : '운송 내역이 없습니다. [＋ 운송 추가]를 눌러 등록하세요.'}</li>`;
-    return;
-  }
-  ul.innerHTML = list.map(r => {
-    const st = Settle.statusOf(r);
-    const paidBtn = Settle.isUnpaid(r)
-      ? `<button class="mini-btn done" data-pay="${r.id}">💰 입금확인</button>` : '';
-    const route = [r.origin, r.dest].filter(Boolean).map(esc).join(' → ');
-    return `<li class="stop-item settle-item ${Settle.STATUS[st].cls}">
-      <span class="label">
-        <span style="font-weight:800">${esc(r.company || '미지정')} · ${fmtWon(r.amount || 0)}</span>
-        <span class="sub">${settleStatusBadge(r)} ${r.payMethod || ''}${route ? ' · ' + route : ''}
-          <br>운송 ${fmtDateShort(r.shipDate)} · 예상입금 ${fmtDateShort(r.expectedDate)}${r.confirmed ? ` · 입금 ${fmtDateShort(r.paidDate)}` : ''}${r.tax ? ' · 계산서' : ''}</span>
-      </span>
-      <span class="settle-actions">
-        ${paidBtn}
-        <button class="mini-btn" data-edit="${r.id}">수정</button>
-      </span>
-    </li>`;
-  }).join('');
-  ul.querySelectorAll('[data-pay]').forEach(b => b.addEventListener('click', () => openPayConfirm(b.dataset.pay)));
-  ul.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openSettleForm(b.dataset.edit)));
-}
-
-function openPayConfirm(id) {
-  const r = Settle.get(id);
-  if (!r) return;
-  const exp = Settle.expectedAmount(r);
-  const input = prompt(`입금 확인 — ${r.company || '미지정'}\n실제 입금된 금액을 입력하세요 (엔터 시 예상액 ${exp.toLocaleString('ko-KR')}원)`, exp);
-  if (input === null) return;
-  Settle.confirmPaid(id, input === '' ? exp : Number(String(input).replace(/[^0-9]/g, '')), Settle.today());
-  toast('💰 입금 확인 — 미수금에서 차감했습니다');
-  renderSettle();
-}
-
-function renderSettleCompanies() {
-  const list = Settle.byCompany();
-  const dl = $('#sf-company-list');
-  if (dl) dl.innerHTML = list.map(c => `<option value="${esc(c.name)}">`).join('');
-  const ul = $('#settle-companies');
-  if (!list.length) { ul.innerHTML = `<li class="stop-item" style="justify-content:center;color:var(--ink-dim)">등록된 업체가 없습니다</li>`; return; }
-  ul.innerHTML = list.map(c => `
-    <li class="stop-item">
-      <span class="label">
-        <span style="font-weight:800">${esc(c.name)}</span>
-        <span class="sub">${c.count}건 · 총 ${fmtWon(c.amount)} · 입금 ${fmtWon(c.received)}${c.avgPayDays != null ? ` · 평균 ${c.avgPayDays}일` : ''}</span>
-      </span>
-      ${c.unpaid > 0 ? `<span class="badge settle-badge st-overdue">미수 ${fmtWon(c.unpaid)}</span>` : `<span class="badge settle-badge st-paid">완납</span>`}
-    </li>`).join('');
-}
-
-// ── 추가/편집 폼 ──
-let settleEditId = null;
-let settleFromTrip = null;
-function openSettleForm(id, prefill) {
-  settleEditId = id;
-  const r = id ? Settle.get(id) : (prefill || null);
-  settleFromTrip = (id && Settle.get(id)) ? Settle.get(id).fromTrip : (prefill && prefill.fromTrip) || null;
-  $('#settle-form-title').textContent = id ? '✏️ 운송 수정' : '＋ 운송 추가';
-  $('#sf-company').value = r ? (r.company || '') : '';
-  $('#sf-amount').value = r ? (r.amount || '') : '';
-  $('#sf-pay').value = r ? (r.payMethod || Settle.PAY_METHODS[0]) : Settle.PAY_METHODS[0];
-  $('#sf-shipdate').value = r ? (r.shipDate || Settle.today()) : Settle.today();
-  $('#sf-origin').value = r ? (r.origin || '') : '';
-  $('#sf-dest').value = r ? (r.dest || '') : '';
-  $('#sf-fee').value = r ? (r.fee || '') : '';
-  $('#sf-expected').value = r ? (r.expectedDate || '') : '';
-  $('#sf-tax').value = r && r.tax ? '1' : '';
-  $('#sf-taxdate').value = r ? (r.taxDate || '') : '';
-  $('#sf-memo').value = r ? (r.memo || '') : '';
-  $('#sf-taxdate-wrap').style.display = $('#sf-tax').value ? '' : 'none';
-  $('#btn-settle-delete').style.display = id ? '' : 'none';
-  updateSettleCalc();
-  $('#settle-form-card').classList.remove('hidden');
-  $('#settle-form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-function closeSettleForm() {
-  $('#settle-form-card').classList.add('hidden');
-  settleEditId = null;
-}
-function updateSettleCalc() {
-  const amount = parseFloat($('#sf-amount').value) || 0;
-  const fee = parseFloat($('#sf-fee').value) || 0;
-  const tax = !!$('#sf-tax').value;
-  const gross = tax ? Math.round(amount * 1.1) : amount;
-  const expected = Math.max(0, gross - fee);
-  $('#sf-calc').innerHTML = amount > 0
-    ? `${tax ? `세금계산서 발행금액 <b>${fmtWon(gross)}</b> (부가세 포함) · ` : ''}예상 입금액 <b style="color:var(--brand)">${fmtWon(expected)}</b>${fee ? ` (수수료 ${fmtWon(fee)} 제외)` : ''}`
-    : '';
-}
-function saveSettleForm() {
-  const amount = parseFloat($('#sf-amount').value) || 0;
-  const company = $('#sf-company').value.trim();
-  if (!company) { toast('업체명을 입력해 주세요'); return; }
-  if (!(amount > 0)) { toast('운송금액을 입력해 주세요'); return; }
-  const rec = {
-    id: settleEditId || undefined,
-    company, amount,
-    payMethod: $('#sf-pay').value,
-    shipDate: $('#sf-shipdate').value || Settle.today(),
-    origin: $('#sf-origin').value.trim(),
-    dest: $('#sf-dest').value.trim(),
-    fee: parseFloat($('#sf-fee').value) || 0,
-    expectedDate: $('#sf-expected').value,
-    tax: !!$('#sf-tax').value,
-    taxDate: $('#sf-tax').value ? $('#sf-taxdate').value : '',
-    memo: $('#sf-memo').value.trim(),
-    fromTrip: settleFromTrip || undefined,
-  };
-  if (settleEditId) {
-    const prev = Settle.get(settleEditId);
-    rec.confirmed = prev.confirmed; rec.paidDate = prev.paidDate; rec.paidAmount = prev.paidAmount; rec.hold = prev.hold;
-  }
-  Settle.upsert(rec);
-  closeSettleForm();
-  toast(settleEditId ? '✏️ 수정했습니다' : '✅ 운송을 등록했습니다');
-  renderSettle();
-}
-function deleteSettleForm() {
-  if (!settleEditId) return;
-  if (!confirm('이 운송 내역을 삭제할까요?')) return;
-  Settle.remove(settleEditId);
-  closeSettleForm();
-  toast('🗑️ 삭제했습니다');
-  renderSettle();
 }
 
 // ─────────── 홈 화면 설치 (PWA) ───────────
@@ -1833,28 +1640,9 @@ $('#btn-theme').addEventListener('click', () => {
   applyThemeIcon();
 });
 
-// 글씨 크기 전환 — 3단계(기본→크게→더 크게)를 눌러가며 순환. 기본값은 "크게".
-const FONT_LEVELS = ['기본', '크게', '더 크게'];
-function currentFontLevel() {
-  const v = parseInt(document.documentElement.dataset.fontscale, 10);
-  return (v === 0 || v === 1 || v === 2) ? v : 0;
-}
-function applyFontScaleIcon() {
-  $('#btn-fontscale').textContent = '가 ' + FONT_LEVELS[currentFontLevel()];
-}
-$('#btn-fontscale').addEventListener('click', () => {
-  const next = (currentFontLevel() + 1) % 3;
-  document.documentElement.dataset.fontscale = String(next);
-  localStorage.setItem('cargo-fontscale', String(next));
-  applyFontScaleIcon();
-  toast(`🔠 글씨 크기: ${FONT_LEVELS[next]}`);
-  if (map) setTimeout(() => map.invalidateSize(), 100);
-});
-
 // ─────────── 초기화 ───────────
 function init() {
   applyThemeIcon();
-  applyFontScaleIcon();
   loadState();
   // 체험 모드(?demo): 서버 호출 없이 예시 데이터로 화면을 보여준다
   if (new URLSearchParams(location.search).has('demo')) seedDemo();
@@ -1862,8 +1650,8 @@ function init() {
   state.stops.forEach(s => {
     if (s.status === 'pending') s.status = (s.lat != null) ? 'ok' : 'error';
   });
+  initEv();
   initCargo();
-  initSettle();
   initInstall();
 
   if (state.origin) {
