@@ -386,20 +386,29 @@ function smsLink(phone, body) {
   return `sms:${n}${sep}body=${encodeURIComponent(body)}`;
 }
 
+/** 이 운행에 실린 화물 정보 (지점에 화물이 없으면 운행 전체 화물로 채운다 — 상차·하차 같은 화물) */
+function tripCargo() {
+  const stops = (state.trip && state.trip.snapshot && state.trip.snapshot.stops) || state.stops || [];
+  return [...new Set(stops.map(s => s.cargo).filter(Boolean))].join(' · ');
+}
+function stopCargo(stop) { return stop.cargo || tripCargo(); }
+
 /** 현장 담당자에게: 도착 전 '가는 길' 안내 (화물·특이사항 포함) */
 function enrouteMsg(stop, mins = 5) {
   const act = stop.type === '상차' ? '상차' : '하차';
+  const cargo = stopCargo(stop);
   const lines = ['안녕하세요, 화물 기사입니다.'];
-  if (stop.cargo) lines.push(`[화물] ${stop.cargo}`);
+  if (cargo) lines.push(`[화물] ${cargo}`);
   lines.push(`${act}하러 가는 길입니다. 약 ${mins}분 후 도착 예정입니다.`);
   if (stop.notes && stop.notes.length) lines.push(`[특이사항] ${stop.notes.join(' / ')}`);
   return lines.join('\n');
 }
-/** 화주/포워딩에게: 작업 후 완료 보고 */
+/** 화주/포워딩에게: 작업 후 완료 보고 (하차에도 실은 화물 정보 포함) */
 function completeMsg(stop) {
   const act = stop.type === '상차' ? '상차' : '하차';
   const where = stop.label ? stop.label + ' ' : '';
-  const cargo = stop.cargo ? `(${stop.cargo}) ` : '';
+  const c = stopCargo(stop);
+  const cargo = c ? `(${c}) ` : '';
   return `${where}${cargo}${act} 완료하였습니다.`;
 }
 
