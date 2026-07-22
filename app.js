@@ -1295,6 +1295,7 @@ function cargoDiagramSvg(results, TL, TW, TH) {
   fits.forEach((r, idx) => {
     const p = r.place;
     const color = DIAGRAM_COLORS[results.indexOf(r) % DIAGRAM_COLORS.length];
+    const itemStart = cursor;
     let remaining = r.loaded;
     for (let j = 0; j < r.usedCols; j++) {
       for (let k = 0; k < p.across && remaining > 0; k++) {
@@ -1303,6 +1304,12 @@ function cargoDiagramSvg(results, TL, TW, TH) {
         top += `<rect x="${(cursor + 0.8).toFixed(1)}" y="${(PAD + k * p.x + 0.8).toFixed(1)}" width="${(p.y - 1.6).toFixed(1)}" height="${(p.x - 1.6).toFixed(1)}" rx="2" fill="${color}" fill-opacity="${stackH === p.layers ? 0.85 : 0.4}" stroke="${color}" stroke-width="1"/>`;
       }
       cursor += p.y;
+    }
+    // 방향 라벨: 폭 방향/길이 방향 치수 (박스를 어느 면으로 놓았는지)
+    const regLen = cursor - itemStart, regW = p.across * p.x;
+    if (regLen > 58 && regW > 22) {
+      const lx = itemStart + regLen / 2, ly = PAD + regW / 2;
+      top += `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="central" fill="#fff" font-weight="700" font-size="11">폭${p.x}·길이${p.y}</text>`;
     }
   });
   const freeLen = CAB + TL - cursor;
@@ -1336,9 +1343,10 @@ function cargoDiagramSvg(results, TL, TW, TH) {
       const cy = GROUND - p.layers * it.h / 2;
       const showDim = r.usedLen > 66 && p.layers * it.h > 34;   // 넓고 높을 때만 치수까지
       if (showDim) {
+        // 옆에서 본 모습 = 길이 × 높이. 박스 1개는 길이 p.y, 높이 it.h
         side += `<text x="${cx}" y="${cy}" text-anchor="middle" fill="#fff" font-weight="700">`
-          + `<tspan x="${cx}" dy="-7" font-size="11">${it.w}×${it.d}×${it.h}</tspan>`
-          + `<tspan x="${cx}" dy="17" font-size="14">${p.layers}단</tspan></text>`;
+          + `<tspan x="${cx}" dy="-7" font-size="11">높이${it.h}·길이${p.y}</tspan>`
+          + `<tspan x="${cx}" dy="17" font-size="14">${p.layers}단 (${p.layers * it.h}cm)</tspan></text>`;
       } else {
         side += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#fff">${p.layers}단</text>`;
       }
@@ -1419,8 +1427,9 @@ $('#btn-calc-cargo').addEventListener('click', () => {
   const rows = results.map(r => {
     if (!r.place.fit) return [itemLabel(r.it), '❌ ' + r.place.reason];
     const p = r.place;
-    let txt = `폭 ${p.across}줄 × ${p.layers}단 × 길이 ${r.usedCols}열 → 바닥 ${Math.round(r.usedLen)}cm`;
-    if (r.left > 0) txt = `<b style="color:var(--red)">${r.loaded}개 적재 / ${r.left}개 못 실음</b> · ` + txt;
+    // 어느 치수를 어느 방향으로 놓았는지(적재 방법) 명확히
+    let txt = `세워서 — 폭 방향 <b>${p.x}cm</b>(${p.across}줄) · 길이 방향 <b>${p.y}cm</b>(${r.usedCols}열) · 높이 <b>${r.it.h}cm</b>(${p.layers}단) → 바닥 ${Math.round(r.usedLen)}cm`;
+    if (r.left > 0) txt = `<b style="color:var(--red)">${r.loaded}개 적재 / ${r.left}개 못 실음</b><br>` + txt;
     if (p.wastedH >= 30 && p.wastedH < r.it.h) txt += ` · 위 ${Math.round(p.wastedH)}cm는 활용 불가`;
     return [itemLabel(r.it), txt];
   });
