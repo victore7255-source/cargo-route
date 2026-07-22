@@ -1166,7 +1166,7 @@ function addCargoItems(items, fromLabel) {
   items.forEach(it => cargoItems.push({
     id: uid(), kind: it.kind, w: it.w, d: it.d, h: it.h,
     count: it.count, totalKg: it.totalKg || 0,
-    stack: 1, from: fromLabel || '',
+    stack: 1, free: !!it.free, from: fromLabel || '',
   }));
   saveItems();
   renderCargoItems();
@@ -1180,12 +1180,17 @@ function renderCargoItems() {
     return;
   }
   ul.innerHTML = cargoItems.map((it, i) => {
-    const sub = [it.from ? '출처: ' + it.from : '', it.kind === 'plt' ? (it.stack >= 2 ? '2단 허용' : '1단(기본)') : ''].filter(Boolean).map(esc).join(' · ');
+    const sub = [
+      it.from ? '출처: ' + it.from : '',
+      it.kind === 'plt' ? (it.stack >= 2 ? '2단 허용' : '1단(기본)') : (it.free ? '방향 자유(눕힘 가능) — 최적 방향 계산' : '세워서만(지정 방향)'),
+    ].filter(Boolean).map(esc).join(' · ');
     return `
     <li class="stop-item">
       <div class="si-head">
         <span class="si-icon">${it.kind === 'plt' ? '🟫' : '📦'}</span>
-        ${it.kind === 'plt' ? `<button class="badge ${it.stack >= 2 ? 'load' : 'unload'}" data-item-stack="${i}" title="파레트 겹침 허용 전환">${it.stack >= 2 ? '2단' : '1단'}</button>` : ''}
+        ${it.kind === 'plt'
+          ? `<button class="badge ${it.stack >= 2 ? 'load' : 'unload'}" data-item-stack="${i}" title="파레트 겹침 허용 전환">${it.stack >= 2 ? '2단' : '1단'}</button>`
+          : `<button class="badge ${it.free ? 'load' : 'unload'}" data-item-free="${i}" title="세워서만 / 방향 자유 전환">${it.free ? '방향 자유' : '세워서만'}</button>`}
         <button class="icon-btn si-del" data-item-del="${i}" title="삭제">✕</button>
       </div>
       <div class="si-text">${esc(itemLabel(it))}</div>
@@ -1195,6 +1200,11 @@ function renderCargoItems() {
   ul.querySelectorAll('[data-item-stack]').forEach(b => b.addEventListener('click', () => {
     const it = cargoItems[+b.dataset.itemStack];
     it.stack = it.stack >= 2 ? 1 : 2;
+    saveItems(); renderCargoItems();
+  }));
+  ul.querySelectorAll('[data-item-free]').forEach(b => b.addEventListener('click', () => {
+    const it = cargoItems[+b.dataset.itemFree];
+    it.free = !it.free;
     saveItems(); renderCargoItems();
   }));
   ul.querySelectorAll('[data-item-del]').forEach(b => b.addEventListener('click', () => {
@@ -1262,19 +1272,26 @@ function initCargo() {
 function placeItem(item, TW, TH) {
   const { w, d, h, count } = item;
   const maxStack = item.kind === 'plt' ? (item.stack || 1) : Infinity;
+  // 방향 자유(free)면 세 면 모두 '높이'로 눕혀볼 수 있다. 아니면 지정 높이(h)로 세워서만.
+  const heightSets = item.free
+    ? [[w, d, h], [w, h, d], [d, h, w]]   // [바닥변A, 바닥변B, 높이]
+    : [[w, d, h]];
   let best = null;
-  for (const [x, y] of [[w, d], [d, w]]) {   // 세운 상태에서 가로/세로 회전만 허용
-    const across = Math.floor(TW / x);
-    const layers = Math.min(Math.floor(TH / h), maxStack);
-    if (across < 1 || layers < 1) continue;
-    const cols = Math.ceil(count / (across * layers));
-    const usedLen = cols * y;
-    if (!best || usedLen < best.usedLen) best = { across, layers, cols, usedLen, x, y };
+  for (const [a, b, ht] of heightSets) {
+    for (const [x, y] of [[a, b], [b, a]]) {   // 바닥 회전(가로/세로)
+      const across = Math.floor(TW / x);
+      const layers = Math.min(Math.floor(TH / ht), maxStack);
+      if (across < 1 || layers < 1) continue;
+      const cols = Math.ceil(count / (across * layers));
+      const usedLen = cols * y;
+      if (!best || usedLen < best.usedLen) best = { across, layers, cols, usedLen, x, y, h: ht };
+    }
   }
   if (!best) {
-    return { fit: false, reason: h > TH ? `높이 ${h}cm가 적재함 높이 ${TH}cm를 넘습니다` : `가로·세로(${w}×${d}cm)가 적재함 폭 ${TW}cm를 넘습니다` };
+    const md = Math.min(w, d, h);
+    return { fit: false, reason: md > TH ? `가장 작은 변 ${md}cm도 적재함 높이 ${TH}cm를 넘습니다` : `가로·세로가 적재함 폭 ${TW}cm를 넘습니다` };
   }
-  return { fit: true, ...best, wastedH: TH - best.layers * h };
+  return { fit: true, ...best, wastedH: TH - best.layers * best.h };
 }
 
 const DIAGRAM_COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#10b981', '#ec4899', '#84cc16'];
@@ -1296,12 +1313,15 @@ function cargoDiagramSvg(results, TL, TW, TH) {
     const p = r.place;
     const color = DIAGRAM_COLORS[results.indexOf(r) % DIAGRAM_COLORS.length];
     const itemStart = cursor;
-    let remaining = r.loaded;
+    // 바닥을 먼저 채우고 위로 쌓는다 — 앞쪽 extra 자리에 한 단 더(진하게), 나머지는 base단(연하게)
+    let posIdx = 0;
     for (let j = 0; j < r.usedCols; j++) {
-      for (let k = 0; k < p.across && remaining > 0; k++) {
-        const stackH = Math.min(p.layers, remaining);
-        remaining -= stackH;
-        top += `<rect x="${(cursor + 0.8).toFixed(1)}" y="${(PAD + k * p.x + 0.8).toFixed(1)}" width="${(p.y - 1.6).toFixed(1)}" height="${(p.x - 1.6).toFixed(1)}" rx="2" fill="${color}" fill-opacity="${stackH === p.layers ? 0.85 : 0.4}" stroke="${color}" stroke-width="1"/>`;
+      for (let k = 0; k < p.across; k++) {
+        if (posIdx >= r.footprint) break;
+        const topped = posIdx < r.extra;                 // 이 자리에 한 단 더
+        const opacity = topped ? 0.85 : 0.45;
+        top += `<rect x="${(cursor + 0.8).toFixed(1)}" y="${(PAD + k * p.x + 0.8).toFixed(1)}" width="${(p.y - 1.6).toFixed(1)}" height="${(p.x - 1.6).toFixed(1)}" rx="2" fill="${color}" fill-opacity="${opacity}" stroke="${color}" stroke-width="1"/>`;
+        posIdx++;
       }
       cursor += p.y;
     }
@@ -1333,26 +1353,30 @@ function cargoDiagramSvg(results, TL, TW, TH) {
     + `<text x="${PAD + (CAB - 12) / 2}" y="${PAD + TH * 0.62}" text-anchor="middle" dominant-baseline="central" font-size="13" fill="var(--brand)">앞</text>`;
   cursor = CAB;
   fits.forEach((r) => {
-    const p = r.place, it = r.it;
+    const p = r.place;
+    const bh = p.h;                       // 박스 1개의 실제 높이(눕힘 반영)
+    const lays = r.layersUsed;            // 실제 쌓이는 단수
+    const topCols = r.extra ? Math.ceil(r.extra / p.across) : 0;  // 맨 위 단이 덮는 열 수
     const color = DIAGRAM_COLORS[results.indexOf(r) % DIAGRAM_COLORS.length];
-    for (let l = 0; l < p.layers; l++) {
-      side += `<rect x="${(cursor + 0.8).toFixed(1)}" y="${(GROUND - (l + 1) * it.h + 0.8).toFixed(1)}" width="${(r.usedLen - 1.6).toFixed(1)}" height="${(it.h - 1.6).toFixed(1)}" rx="2" fill="${color}" fill-opacity="0.85" stroke="${color}" stroke-width="1"/>`;
+    for (let l = 0; l < lays; l++) {
+      const partialTop = (r.extra > 0 && l === lays - 1);        // 맨 위 단은 일부만
+      const wRect = partialTop ? r.usedLen * topCols / r.usedCols : r.usedLen;
+      side += `<rect x="${(cursor + 0.8).toFixed(1)}" y="${(GROUND - (l + 1) * bh + 0.8).toFixed(1)}" width="${(wRect - 1.6).toFixed(1)}" height="${(bh - 1.6).toFixed(1)}" rx="2" fill="${color}" fill-opacity="0.85" stroke="${color}" stroke-width="1"/>`;
     }
     if (r.usedLen > 34) {
       const cx = cursor + r.usedLen / 2;
-      const cy = GROUND - p.layers * it.h / 2;
-      const showDim = r.usedLen > 66 && p.layers * it.h > 34;   // 넓고 높을 때만 치수까지
+      const cy = GROUND - lays * bh / 2;
+      const showDim = r.usedLen > 66 && lays * bh > 34;   // 넓고 높을 때만 치수까지
       if (showDim) {
-        // 옆에서 본 모습 = 길이 × 높이. 박스 1개는 길이 p.y, 높이 it.h
         side += `<text x="${cx}" y="${cy}" text-anchor="middle" fill="#fff" font-weight="700">`
-          + `<tspan x="${cx}" dy="-7" font-size="11">높이${it.h}·길이${p.y}</tspan>`
-          + `<tspan x="${cx}" dy="17" font-size="14">${p.layers}단 (${p.layers * it.h}cm)</tspan></text>`;
+          + `<tspan x="${cx}" dy="-7" font-size="11">높이${bh}·길이${p.y}</tspan>`
+          + `<tspan x="${cx}" dy="17" font-size="14">${lays}단 (${lays * bh}cm)</tspan></text>`;
       } else {
-        side += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#fff">${p.layers}단</text>`;
+        side += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#fff">${lays}단</text>`;
       }
     }
     // 블록 위의 못 쓰는 공간 표시
-    const wasted = TH - p.layers * it.h;
+    const wasted = TH - lays * bh;
     if (wasted >= 25 && r.usedLen > 60) {
       side += `<text x="${cursor + r.usedLen / 2}" y="${PAD + wasted / 2}" text-anchor="middle" dominant-baseline="central" font-size="10" fill="var(--ink-dim)">↕ ${Math.round(wasted)}cm 빈 공간</text>`;
     }
@@ -1368,9 +1392,10 @@ function cargoDiagramSvg(results, TL, TW, TH) {
     if (!(r.loaded > 0)) return '';
     const color = DIAGRAM_COLORS[idx % DIAGRAM_COLORS.length];
     const extra = r.left > 0 ? ` · <b style="color:var(--red)">${r.left}개 못 실음</b>` : '';
-    return `<span class="diagram-key"><i style="background:${color}"></i>${esc(itemLabel(r.it))} — ${r.place.layers}단${extra}</span>`;
+    const laid = r.place.h !== r.it.h ? ' · 눕힘' : '';
+    return `<span class="diagram-key"><i style="background:${color}"></i>${esc(itemLabel(r.it))} — ${r.layersUsed}단${laid}${extra}</span>`;
   }).join('')
-    + (fits.some(r => r.place.layers > 1) ? '<span class="diagram-key hint">연한 칸 = 위 단이 덜 찬 자리</span>' : '');
+    + (fits.some(r => r.extra > 0) ? '<span class="diagram-key hint">연한 칸 = 위 단이 덜 찬 자리</span>' : '');
 
   return `<div class="cargo-diagram">
     <p class="diagram-cap">🔽 위에서 본 배치</p>
@@ -1397,8 +1422,13 @@ $('#btn-calc-cargo').addEventListener('click', () => {
     const loaded = Math.min(it.count, colsFit * perCol);
     const usedCols = Math.ceil(loaded / perCol);
     const usedLen = usedCols * place.y;
+    // 실제로 쌓이는 최대 단수 (수량이 적으면 이론상 단수보다 낮다)
+    const footprint = place.across * usedCols;
+    const base = footprint ? Math.floor(loaded / footprint) : 0;
+    const extra = footprint ? loaded - base * footprint : 0;   // 앞쪽 extra개 자리는 한 단 더
+    const layersUsed = footprint ? Math.max(1, base + (extra > 0 ? 1 : 0)) : 0;
     remainLen -= usedLen;
-    return { it, place, loaded, left: it.count - loaded, usedLen, usedCols };
+    return { it, place, loaded, left: it.count - loaded, usedLen, usedCols, footprint, base, extra, layersUsed };
   });
 
   const blocked = results.filter(r => !r.place.fit);
@@ -1427,10 +1457,10 @@ $('#btn-calc-cargo').addEventListener('click', () => {
   const rows = results.map(r => {
     if (!r.place.fit) return [itemLabel(r.it), '❌ ' + r.place.reason];
     const p = r.place;
+    const laid = p.h !== r.it.h;   // 눕혀서 실은 경우
     // 어느 치수를 어느 방향으로 놓았는지(적재 방법) 명확히
-    let txt = `세워서 — 폭 방향 <b>${p.x}cm</b>(${p.across}줄) · 길이 방향 <b>${p.y}cm</b>(${r.usedCols}열) · 높이 <b>${r.it.h}cm</b>(${p.layers}단) → 바닥 ${Math.round(r.usedLen)}cm`;
+    let txt = `${laid ? '<b>눕혀서</b> — ' : '세워서 — '}폭 방향 <b>${p.x}cm</b>(${p.across}줄) · 길이 방향 <b>${p.y}cm</b>(${r.usedCols}열) · 높이 <b>${p.h}cm</b>(${r.layersUsed}단) → 바닥 ${Math.round(r.usedLen)}cm`;
     if (r.left > 0) txt = `<b style="color:var(--red)">${r.loaded}개 적재 / ${r.left}개 못 실음</b><br>` + txt;
-    if (p.wastedH >= 30 && p.wastedH < r.it.h) txt += ` · 위 ${Math.round(p.wastedH)}cm는 활용 불가`;
     return [itemLabel(r.it), txt];
   });
   rows.push(['바닥 길이 합계', `${Math.round(usedLen)}cm / ${TL}cm (${Math.min(999, lenRate).toFixed(0)}%)`]);
