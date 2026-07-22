@@ -79,16 +79,17 @@ const STATE_KEY = 'cargo-app-state-v1';
 
 const state = {
   origin: null,   // {label, lat, lng}
-  stops: [],      // {id, label, lat, lng, type:'하차'|'상차', workMin}
+  stops: [],      // {id, label, lat, lng, type:'하차'|'상차', workMin, phones:[]}
   result: null,   // {order, legs, distance, duration, toll, geometry, schedule, departAt, approx}
   trip: null,     // {startedAt, endedAt?, events:{stopId:{arrivedAt,doneAt}}, snapshot}
+  client: { phone: '', name: '' },  // 화주/포워딩(배차 준 곳) — 완료 보고 문자 대상
 };
 
 function saveState() {
   if (state._demo) return; // 체험 모드에서는 실제 데이터를 덮어쓰지 않는다
   try {
     localStorage.setItem(STATE_KEY, JSON.stringify({
-      origin: state.origin, stops: state.stops, result: state.result, trip: state.trip,
+      origin: state.origin, stops: state.stops, result: state.result, trip: state.trip, client: state.client,
     }));
   } catch (e) { /* ignore */ }
 }
@@ -165,9 +166,11 @@ $('#btn-new-route').addEventListener('click', () => {
   const futureCount = state.stops.filter(isFutureStop).length;
   state.stops = state.stops.filter(isFutureStop);   // 내일 예정 지점은 보존
   state.result = null;
+  state.client = { phone: '', name: '' };
   $('#result-area').classList.add('hidden');
   $('#sms-input').value = '';
   $('#stops-input').value = '';
+  $('#client-phone').value = '';
   $('#sms-preview').classList.add('hidden');
   saveState();
   renderStops();
@@ -257,13 +260,25 @@ $('#btn-parse-sms').addEventListener('click', () => {
     full.schedule = { label: manualSched, detail: SCHED_DETAILS[manualSched] + ' · 직접 선택' };
   }
   smsParsed = full.stops;
-  smsMeta = { schedule: full.schedule, items: full.items };
+  smsMeta = { schedule: full.schedule, items: full.items, client: full.client };
+  // 화주/포워딩 번호가 인식되면 필드에 채운다 (비어 있을 때만 자동 채움 — 직접 입력 우선)
+  if (full.client && full.client.phone && !$('#client-phone').value.trim()) {
+    $('#client-phone').value = full.client.phone;
+    state.client = { phone: full.client.phone, name: full.client.name || '' };
+    saveState();
+  }
   if (!smsParsed.length) {
     $('#sms-preview').classList.add('hidden');
     toast('주소를 찾지 못했습니다. 문자에 "시/구/로" 형태의 주소가 있는지 확인해 주세요.');
     return;
   }
   renderSmsPreview();
+});
+
+// 화주/포워딩 번호 직접 입력·수정
+$('#client-phone').addEventListener('input', () => {
+  state.client = { phone: $('#client-phone').value.trim(), name: (state.client && state.client.name) || '' };
+  saveState();
 });
 
 function itemLabel(it) {
@@ -279,6 +294,9 @@ function renderSmsPreview() {
   if (smsMeta.schedule) {
     metaHtml += `<div class="sms-meta">📅 <b>${esc(smsMeta.schedule.label)}</b> — ${esc(smsMeta.schedule.detail)}</div>`;
   }
+  if (smsMeta.client && smsMeta.client.phone) {
+    metaHtml += `<div class="sms-meta">📋 배차: <b>${esc(smsMeta.client.name || '화주·포워딩')} ${esc(smsMeta.client.phone)}</b> <span class="hint">→ 완료 보고 문자 대상</span></div>`;
+  }
   if (smsMeta.items.length) {
     metaHtml += `<div class="sms-meta">📦 ${smsMeta.items.map(itemLabel).map(esc).join(' · ')} <span class="hint">→ 배송지 추가 시 적재 탭에 함께 담깁니다</span></div>`;
   }
@@ -289,7 +307,7 @@ function renderSmsPreview() {
     + smsParsed.map((s, i) => {
       const sub = [
         s.contactName,
-        s.phone ? '📞 ' + s.phone : '',
+        stopPhones(s).length ? '📞 ' + stopPhones(s).join(' · 📞 ') : '',
         s.cargo ? '📦 ' + s.cargo : '',
         s.podPhone ? '📸 인수증 → ' + s.podPhone : '',
       ].filter(Boolean).map(esc).join(' · ');
@@ -329,7 +347,8 @@ async function addSmsStops() {
   const pending = smsParsed.map(p => ({
     id: uid(), label: p.address, lat: null, lng: null,
     type: p.type, workMin: defaultWork, status: 'pending',
-    phone: p.phone || '', contactName: p.contactName || '',
+    phone: p.phone || '', phones: (p.phones && p.phones.length) ? p.phones : (p.phone ? [p.phone] : []),
+    contactName: p.contactName || '',
     cargo: p.cargo || '', podPhone: p.podPhone || '',
     notes: p.notes || [], schedule: schedLabel,
     visitDate: p.type === '상차' ? dates.load : dates.unload,
@@ -343,7 +362,7 @@ async function addSmsStops() {
     addCargoItems(smsMeta.items, pending[0] ? pending[0].label : '');
   }
   smsParsed = [];
-  smsMeta = { schedule: null, items: [] };
+  smsMeta = { schedule: null, items: [], client: null };
   $('#sms-input').value = '';
   $('#sms-preview').classList.add('hidden');
   resetSchedPicker();
@@ -367,6 +386,23 @@ function smsLink(phone, body) {
   return `sms:${n}${sep}body=${encodeURIComponent(body)}`;
 }
 
+/** 현장 담당자에게: 도착 전 '가는 길' 안내 (화물·특이사항 포함) */
+function enrouteMsg(stop, mins = 5) {
+  const act = stop.type === '상차' ? '상차' : '하차';
+  const lines = ['안녕하세요, 화물 기사입니다.'];
+  if (stop.cargo) lines.push(`[화물] ${stop.cargo}`);
+  lines.push(`${act}하러 가는 길입니다. 약 ${mins}분 후 도착 예정입니다.`);
+  if (stop.notes && stop.notes.length) lines.push(`[특이사항] ${stop.notes.join(' / ')}`);
+  return lines.join('\n');
+}
+/** 화주/포워딩에게: 작업 후 완료 보고 */
+function completeMsg(stop) {
+  const act = stop.type === '상차' ? '상차' : '하차';
+  const where = stop.label ? stop.label + ' ' : '';
+  const cargo = stop.cargo ? `(${stop.cargo}) ` : '';
+  return `${where}${cargo}${act} 완료하였습니다.`;
+}
+
 function renderStops() {
   const ul = $('#stop-list');
   ul.innerHTML = '';
@@ -380,7 +416,7 @@ function renderStops() {
     const statusIcon = s.status === 'pending' ? '⏳' : s.status === 'error' ? '⚠️' : isFuture ? '📅' : '📍';
     const info = [
       s.contactName,
-      s.phone ? '📞 ' + s.phone : '',
+      stopPhones(s).length ? '📞 ' + stopPhones(s).join(' · 📞 ') : '',
       s.cargo ? '📦 ' + s.cargo : '',
       s.podPhone ? '📸 인수증 → ' + s.podPhone : '',
     ].filter(Boolean).map(esc).join(' · ');
@@ -787,6 +823,7 @@ $('#btn-start-trip').addEventListener('click', () => {
       distance: state.result.distance,
       duration: state.result.duration,
       toll: state.result.toll,
+      client: state.client && state.client.phone ? { ...state.client } : null,
     },
   };
   saveState();
@@ -810,6 +847,17 @@ function renderDrive() {
   }
 }
 
+/** 지점의 현장 담당 전화번호 목록 (여러 개면 모두) */
+function stopPhones(stop) {
+  if (stop.phones && stop.phones.length) return stop.phones;
+  return stop.phone ? [stop.phone] : [];
+}
+/** 화주/포워딩(완료 보고 대상) 번호 — 운행 중이면 스냅샷, 아니면 현재 state */
+function clientPhone() {
+  if (state.trip && state.trip.snapshot && state.trip.snapshot.client) return state.trip.snapshot.client.phone || '';
+  return (state.client && state.client.phone) || '';
+}
+
 function renderDriveChecklist() {
   const trip = state.trip;
   const stops = trip.snapshot.stops;
@@ -825,10 +873,7 @@ function renderDriveChecklist() {
   if (next) {
     const idx = stops.indexOf(next);
     $('#next-stop-card').classList.remove('hidden');
-    // 받는 사람이 '누가·무슨 화물인지' 알 수 있게 화물·담당자 정보를 문자에 넣는다
     const act = next.type === '상차' ? '상차' : '하차';
-    const who = [next.cargo, next.contactName ? next.contactName + ' 담당' : ''].filter(Boolean).join(' · ');
-    const arriveMsg = `안녕하세요, 화물 기사입니다.${who ? `\n[${who}]` : ''}\n이 건으로 ${act}하러 가는 길입니다. 약 5분 후 도착 예정입니다.`;
 
     // 네이버로 남은 경로 전체(경유지 포함) 안내 버튼
     const remaining = stops.filter(s => !(trip.events[s.id] && trip.events[s.id].doneAt));
@@ -837,10 +882,12 @@ function renderDriveChecklist() {
     if (nf) { nbtn.style.display = ''; nbtn.href = nf.url; }
     else { nbtn.style.display = 'none'; }
 
-    const contactHtml = next.phone ? `
-      <div class="row gap" style="margin-bottom:8px">
-        <a class="mini-btn" href="${telLink(next.phone)}">📞 ${esc(next.contactName || '담당자')} 전화</a>
-        <a class="mini-btn" href="${smsLink(next.phone, arriveMsg)}">✉️ 곧 도착 문자</a>
+    // 현장 담당자에게: 전화(번호별) + '가는 길' 안내 문자(화물·특이사항 포함)
+    const nphones = stopPhones(next);
+    const contactHtml = nphones.length ? `
+      <div class="row gap wrap" style="margin-bottom:8px">
+        ${nphones.map((ph, i) => `<a class="mini-btn" href="${telLink(ph)}">📞 ${nphones.length > 1 ? '전화' + (i + 1) : esc(next.contactName || '현장') + ' 전화'}</a>`).join('')}
+        <a class="mini-btn" href="${smsLink(nphones[0], enrouteMsg(next))}">✉️ 가는 길 안내 문자</a>
       </div>` : '';
     // 이 카드에서 바로 도착·완료 처리 → 완료하면 다음 목적지로 넘어간다
     const nev = trip.events[next.id] || {};
@@ -881,7 +928,8 @@ function renderDriveChecklist() {
       </div>
       <div class="visit-actions">
         ${ev.doneAt ? '' : `<button class="mini-btn" data-act="done" data-id="${s.id}">${s.type} 완료</button>`}
-        ${s.phone ? `<a class="mini-btn" href="${telLink(s.phone)}" title="${esc(s.contactName || '담당자')} 전화">📞</a>` : ''}
+        ${stopPhones(s).map((ph, i) => `<a class="mini-btn" href="${telLink(ph)}" title="현장 ${ph}">📞${stopPhones(s).length > 1 ? (i + 1) : ''}</a>`).join('')}
+        ${ev.doneAt && clientPhone() ? `<a class="mini-btn done" href="${smsLink(clientPhone(), completeMsg(s))}">✉️ ${s.type} 완료 보고</a>` : ''}
         ${ev.doneAt && s.podPhone ? `<a class="mini-btn" href="${smsLink(s.podPhone, '안녕하세요, 화물 기사입니다. 인수증 사진 보내드립니다. (사진을 첨부해 주세요)')}">📸 인수증 전송</a>` : ''}
       </div>`;
     ul.appendChild(li);
@@ -894,7 +942,8 @@ function renderDriveChecklist() {
       if (!ev.arrivedAt) ev.arrivedAt = Date.now();
       ev.doneAt = Date.now();
       const s = state.trip.snapshot.stops.find(x => x.id === b.dataset.id);
-      if (s && s.podPhone) toast(`📸 인수증 싸인 사진을 ${s.podPhone} 로 보내주세요 — 아래 [인수증 전송] 버튼을 누르세요`, 5000);
+      if (clientPhone()) toast(`✉️ 화주에게 '${s ? s.type : ''} 완료 보고' 문자를 보내세요 — 아래 [완료 보고] 버튼을 누르세요`, 5000);
+      else if (s && s.podPhone) toast(`📸 인수증 사진을 ${s.podPhone} 로 보내주세요 — [인수증 전송] 버튼`, 5000);
     }
     saveState();
     renderDriveChecklist();
@@ -929,7 +978,8 @@ async function driveAddStops() {
       const dates = scheduleDates(schedLabel);
       specs = full.stops.map(p => ({
         label: p.address, type: p.type,
-        phone: p.phone || '', contactName: p.contactName || '',
+        phone: p.phone || '', phones: (p.phones && p.phones.length) ? p.phones : (p.phone ? [p.phone] : []),
+        contactName: p.contactName || '',
         cargo: p.cargo || '', podPhone: p.podPhone || '',
         notes: p.notes || [], schedule: schedLabel,
         visitDate: p.type === '상차' ? dates.load : dates.unload,
@@ -1025,7 +1075,9 @@ $('#btn-end-trip').addEventListener('click', () => {
   const futureCount = state.stops.filter(isFutureStop).length;
   state.stops = state.stops.filter(isFutureStop);
   state.result = null;
+  state.client = { phone: '', name: '' };
   $('#result-area').classList.add('hidden');
+  $('#client-phone').value = '';
   saveState();
   renderStops();
   renderDrive();
@@ -1483,6 +1535,7 @@ function init() {
     $('#origin-input').value = state.origin.label;
     setOriginStatus('✓ 출발지: ' + state.origin.label, 'ok');
   }
+  if (state.client && state.client.phone) $('#client-phone').value = state.client.phone;
   renderStops();
   if (state.result) {
     renderResult();

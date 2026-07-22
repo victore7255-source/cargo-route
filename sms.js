@@ -66,8 +66,9 @@ const SmsParser = (() => {
 
   /** 한 구역(상차 또는 하차)의 줄들에서 세부 정보를 뽑는다 */
   function parseSection(type, lines) {
-    const info = { type, address: '', phone: '', contactName: '', cargo: '', podPhone: '', notes: [] };
+    const info = { type, address: '', phone: '', phones: [], contactName: '', cargo: '', podPhone: '', notes: [] };
     const cargoLines = [];
+    const addPhones = (ps) => ps.forEach(x => { if (x !== info.podPhone && !info.phones.includes(x)) info.phones.push(x); });
 
     for (const raw of lines) {
       const line = stripLabel(raw);
@@ -87,8 +88,7 @@ const SmsParser = (() => {
         if (ca) {
           info.address = ca.addr;
           // 주소 줄에 섞인 전화번호·담당자·화물 정보도 함께 수거한다
-          const p = findPhones(line);
-          if (p.length && !info.phone) info.phone = p[0];
+          addPhones(findPhones(line));
           const anm = line.match(NAME_RE);
           const anm2 = anm ? null : line.match(NAME_RE2);
           if (!info.contactName) {
@@ -107,9 +107,8 @@ const SmsParser = (() => {
       const nm2 = !nm && line.match(NAME_RE2);
       if (nm2 && !info.contactName) info.contactName = nm2[1] + nm2[2];
 
-      // 전화번호
-      const phones = findPhones(line);
-      if (phones.length && !info.phone) info.phone = phones[0];
+      // 전화번호 (여러 개면 모두 수집)
+      addPhones(findPhones(line));
 
       // 화물 정보 (하차 구역에도 품목이 적히는 경우가 있어 둘 다 수집)
       if (CARGO_RE.test(line) && !PHONE_RE.test(line)) {
@@ -121,6 +120,8 @@ const SmsParser = (() => {
     }
     info.cargo = cargoLines.slice(0, 2).join(' / ');
     info.notes = [...new Set(info.notes)].slice(0, 5);
+    info.phones = info.phones.filter(x => x !== info.podPhone).slice(0, 4);
+    info.phone = info.phones[0] || '';
     return info;
   }
 
@@ -334,9 +335,28 @@ const SmsParser = (() => {
     return items.slice(0, 10);
   }
 
-  /** 문자 전체 → { stops, schedule, items } (특이사항은 각 stop.notes에 포함) */
+  /* ── 화주/포워딩(배차 준 사람) 연락처 추출 ──
+   * 완료 보고 문자를 보낼 대상. "배차·포워딩·의뢰·화주·운송·물류·상회·접수·오더" 문맥의 번호를 찾는다.
+   * 상차지/하차지 담당자 번호(현장 담당)와는 구분한다. */
+  function detectClient(text, stops) {
+    const CLIENT_RE = /(배차|포워딩|의뢰|화주|운송|물류|상회|접수|오더|order|콜|배송의뢰|담당자?\s*[:：])/i;
+    const sitephones = new Set((stops || []).flatMap(s => s.phones || (s.phone ? [s.phone] : [])));
+    const lines = String(text).replace(/\r/g, '').split('\n');
+    for (const line of lines) {
+      if (!CLIENT_RE.test(line)) continue;
+      const ps = findPhones(line).filter(p => !sitephones.has(p));
+      if (ps.length) {
+        const nm = line.match(/([가-힣A-Za-z0-9]{2,20}(?:물류|포워딩|통운|로지스|익스프레스|운송|상회))/);
+        return { phone: ps[0], name: nm ? nm[1] : '' };
+      }
+    }
+    return { phone: '', name: '' };
+  }
+
+  /** 문자 전체 → { stops, schedule, items, client } (특이사항은 각 stop.notes에 포함) */
   function parseFull(text) {
-    return { stops: parse(text), schedule: detectSchedule(text), items: parseItems(text) };
+    const stops = parse(text);
+    return { stops, schedule: detectSchedule(text), items: parseItems(text), client: detectClient(text, stops) };
   }
 
   /** 한 줄이 주소로 보이는지 (배송지 직접 입력과 배차 문자를 구분할 때 사용) */
