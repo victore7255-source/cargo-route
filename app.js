@@ -379,7 +379,6 @@ function renderStops() {
     li.className = 'stop-item ' + (s.type === '상차' ? 'load' : 'unload') + (s.status === 'error' ? ' error' : '') + (isFuture ? ' future' : '');
     const statusIcon = s.status === 'pending' ? '⏳' : s.status === 'error' ? '⚠️' : isFuture ? '📅' : '📍';
     const info = [
-      s.schedule && !s.visitDate ? '📅 ' + s.schedule : '',
       s.contactName,
       s.phone ? '📞 ' + s.phone : '',
       s.cargo ? '📦 ' + s.cargo : '',
@@ -387,12 +386,16 @@ function renderStops() {
     ].filter(Boolean).map(esc).join(' · ');
     const notes = (s.notes && s.notes.length)
       ? `<br>⚠️ <span class="note">${s.notes.map(esc).join(' / ')}</span>` : '';
+    // 일정(당상당착/당상내착 등)은 자동 인식이든 직접 선택이든 항상 배지로 보여준다
+    const schedBadge = s.schedule
+      ? `<span class="badge sched" style="cursor:default">${esc(s.schedule)}</span>` : '';
     const dateBadge = s.visitDate
       ? `<button class="badge sched" data-act="date" data-i="${i}" title="눌러서 방문 날짜 변경">📅 ${fmtDateK(s.visitDate)}</button>` : '';
     li.innerHTML = `
       <div class="si-head">
         <span class="si-icon">${statusIcon}</span>
         <button class="badge ${s.type === '상차' ? 'load' : 'unload'}" data-act="type" data-i="${i}">${s.type}</button>
+        ${schedBadge}
         ${dateBadge}
         <button class="icon-btn si-del" data-act="del" data-i="${i}" title="삭제">✕</button>
       </div>

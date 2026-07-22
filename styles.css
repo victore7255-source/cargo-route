@@ -242,7 +242,7 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   animation: rise .25s ease both;
 }
 /* 윗줄: 아이콘 + 상차/하차·날짜 배지(왼쪽), ✕(오른쪽) */
-.si-head { display: flex; align-items: center; gap: 7px; }
+.si-head { display: flex; align-items: center; gap: 6px 7px; flex-wrap: wrap; }
 .si-head .si-icon { font-size: 18px; line-height: 1; flex-shrink: 0; }
 .si-head .si-del { margin-left: auto; }
 /* 주소·본문: 전체 폭 */
