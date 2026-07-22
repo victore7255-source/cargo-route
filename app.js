@@ -1332,7 +1332,16 @@ function cargoDiagramSvg(results, TL, TW, TH) {
       side += `<rect x="${(cursor + 0.8).toFixed(1)}" y="${(GROUND - (l + 1) * it.h + 0.8).toFixed(1)}" width="${(r.usedLen - 1.6).toFixed(1)}" height="${(it.h - 1.6).toFixed(1)}" rx="2" fill="${color}" fill-opacity="0.85" stroke="${color}" stroke-width="1"/>`;
     }
     if (r.usedLen > 34) {
-      side += `<text x="${cursor + r.usedLen / 2}" y="${GROUND - p.layers * it.h / 2}" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="700" fill="#fff">${p.layers}단</text>`;
+      const cx = cursor + r.usedLen / 2;
+      const cy = GROUND - p.layers * it.h / 2;
+      const showDim = r.usedLen > 66 && p.layers * it.h > 34;   // 넓고 높을 때만 치수까지
+      if (showDim) {
+        side += `<text x="${cx}" y="${cy}" text-anchor="middle" fill="#fff" font-weight="700">`
+          + `<tspan x="${cx}" dy="-7" font-size="11">${it.w}×${it.d}×${it.h}</tspan>`
+          + `<tspan x="${cx}" dy="17" font-size="14">${p.layers}단</tspan></text>`;
+      } else {
+        side += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="700" fill="#fff">${p.layers}단</text>`;
+      }
     }
     // 블록 위의 못 쓰는 공간 표시
     const wasted = TH - p.layers * it.h;
