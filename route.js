@@ -139,6 +139,66 @@ const Router = (() => {
     return twoOpt(dur, nearestNeighbor(dur, endIdx));
   }
 
+  // ── 일반화된 TSP 경로: start에서 시작해 mids를 최적 순서로 방문, end 고정(선택) ──
+  function heldKarpPath(dur, start, mids, end) {
+    const m = mids.length;
+    const FULL = 1 << m, INF = Infinity;
+    const dp = Array.from({ length: FULL }, () => new Float64Array(m).fill(INF));
+    const parent = Array.from({ length: FULL }, () => new Int16Array(m).fill(-1));
+    for (let j = 0; j < m; j++) dp[1 << j][j] = dur[start][mids[j]];
+    for (let mask = 1; mask < FULL; mask++) {
+      for (let j = 0; j < m; j++) {
+        if (!(mask & (1 << j)) || dp[mask][j] === INF) continue;
+        for (let k = 0; k < m; k++) {
+          if (mask & (1 << k)) continue;
+          const nm = mask | (1 << k);
+          const cost = dp[mask][j] + dur[mids[j]][mids[k]];
+          if (cost < dp[nm][k]) { dp[nm][k] = cost; parent[nm][k] = j; }
+        }
+      }
+    }
+    let best = INF, bestJ = 0;
+    const last = FULL - 1;
+    for (let j = 0; j < m; j++) {
+      const cost = dp[last][j] + (end != null ? dur[mids[j]][end] : 0);
+      if (cost < best) { best = cost; bestJ = j; }
+    }
+    const order = [];
+    let mask = last, j = bestJ;
+    while (j !== -1) { order.unshift(mids[j]); const pj = parent[mask][j]; mask ^= (1 << j); j = pj; }
+    return [start, ...order, ...(end != null ? [end] : [])];
+  }
+
+  function nnPath(dur, start, mids, end) {
+    const remaining = new Set(mids);
+    const order = []; let cur = start;
+    while (remaining.size) {
+      let bn = -1, bd = Infinity;
+      for (const n of remaining) if (dur[cur][n] < bd) { bd = dur[cur][n]; bn = n; }
+      order.push(bn); remaining.delete(bn); cur = bn;
+    }
+    let seq = [start, ...order, ...(end != null ? [end] : [])];
+    const lastMov = end != null ? seq.length - 2 : seq.length - 1;
+    let improved = true;
+    while (improved) {
+      improved = false;
+      for (let i = 1; i < lastMov; i++) {
+        for (let k = i + 1; k <= lastMov; k++) {
+          const cand = seq.slice(0, i).concat(seq.slice(i, k + 1).reverse(), seq.slice(k + 1));
+          if (pathCost(dur, cand) < pathCost(dur, seq) - 0.001) { seq = cand; improved = true; }
+        }
+      }
+    }
+    return seq;
+  }
+
+  /** start → mids(최적 순서) → end. 반환: [start, ...mids, end?] */
+  function tspPath(dur, start, mids, end) {
+    if (mids.length === 0) return end != null ? [start, end] : [start];
+    if (mids.length <= 12) return heldKarpPath(dur, start, mids, end);
+    return nnPath(dur, start, mids, end);
+  }
+
   // ── 확정 순서로 실제 경로 조회 ──
   async function fetchRoute(orderedPoints) {
     try {
@@ -192,9 +252,26 @@ const Router = (() => {
    */
   async function optimize(origin, stops, finalStopIndex) {
     const points = [origin, ...stops];
-    const endIdx = (finalStopIndex != null && finalStopIndex >= 0) ? finalStopIndex + 1 : null;
+    const finalNode = (finalStopIndex != null && finalStopIndex >= 0) ? finalStopIndex + 1 : null;
     const { matrix, approx: tableApprox } = await durationMatrix(points);
-    const orderFull = solveOrder(matrix, endIdx);          // points 인덱스 (0=출발지)
+
+    // 상차·하차가 섞여 있으면 "상차 먼저, 하차 나중" (물건을 실어야 내릴 수 있음).
+    // 최종 목적지가 상차지여도 이 순서가 우선한다.
+    const loads = [], unloads = [];
+    stops.forEach((s, i) => { (s.type === '상차' ? loads : unloads).push(i + 1); });
+
+    let orderFull;
+    if (loads.length && unloads.length) {
+      const loadPath = tspPath(matrix, 0, loads, null);                 // 출발지 → 상차들
+      const lastLoad = loadPath[loadPath.length - 1];
+      const endUnload = (finalNode != null && unloads.includes(finalNode)) ? finalNode : null;
+      const midUnloads = endUnload != null ? unloads.filter(n => n !== endUnload) : unloads;
+      const unloadPath = tspPath(matrix, lastLoad, midUnloads, endUnload); // 마지막 상차 → 하차들
+      orderFull = [...loadPath, ...unloadPath.slice(1)];
+    } else {
+      orderFull = solveOrder(matrix, finalNode);
+    }
+
     const orderedPoints = orderFull.map(i => points[i]);
     const route = await fetchRoute(orderedPoints);
     return {
