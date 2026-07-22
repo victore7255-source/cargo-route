@@ -492,3 +492,25 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 
 /* ── 홈 화면 설치 카드 ── */
 .install-card { border-color: var(--brand); }
+
+/* ── 적재 방법(화물별) 한눈에 ── */
+.pack-list { margin-top: 12px; }
+.pack-item { padding: 11px 0; border-bottom: 1px dashed var(--line); }
+.pack-item:last-child { border-bottom: none; }
+.pack-name { font-weight: 700; font-size: 14.5px; margin-bottom: 7px; }
+.pack-how { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pack-how + .pack-how { margin-top: 6px; }
+.pack-chip {
+  display: inline-flex; align-items: center; gap: 2px;
+  background: var(--card-sub); border: 1px solid var(--line);
+  border-radius: 8px; padding: 4px 9px; font-size: 13.5px; color: var(--ink);
+  white-space: nowrap;
+}
+.pack-chip b { font-weight: 800; font-size: 15px; }
+.pack-chip.bad { background: var(--red-soft); border-color: var(--red); color: var(--red); font-weight: 700; }
+.pack-mode {
+  display: inline-flex; align-items: center;
+  background: var(--brand-soft); color: var(--brand);
+  font-weight: 800; font-size: 13.5px; padding: 4px 10px; border-radius: 8px; white-space: nowrap;
+}
+.pack-mode.laid { background: var(--amber-soft); color: var(--amber); }

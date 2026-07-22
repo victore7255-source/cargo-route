@@ -1454,27 +1454,42 @@ $('#btn-calc-cargo').addEventListener('click', () => {
     verdict = `<div class="verdict ok">✅ 전량 적재 가능 — 바닥 길이 ${Math.round(usedLen)}cm / ${TL}cm 사용 (여유 ${Math.round(remainLen)}cm)</div>`;
   }
 
-  const rows = results.map(r => {
-    if (!r.place.fit) return [itemLabel(r.it), '❌ ' + r.place.reason];
+  // 화물별 '적재 방법'을 왼쪽 정렬 칩으로 한눈에 보이게
+  const packHtml = results.map(r => {
+    const name = esc(itemLabel(r.it));
+    if (!r.place.fit) {
+      return `<div class="pack-item"><div class="pack-name">${name}</div><div class="pack-how"><span class="pack-chip bad">❌ ${esc(r.place.reason)}</span></div></div>`;
+    }
     const p = r.place;
-    const laid = p.h !== r.it.h;   // 눕혀서 실은 경우
-    // 어느 치수를 어느 방향으로 놓았는지(적재 방법) 명확히
-    let txt = `${laid ? '<b>눕혀서</b> — ' : '세워서 — '}폭 방향 <b>${p.x}cm</b>(${p.across}줄) · 길이 방향 <b>${p.y}cm</b>(${r.usedCols}열) · 높이 <b>${p.h}cm</b>(${r.layersUsed}단) → 바닥 ${Math.round(r.usedLen)}cm`;
-    if (r.left > 0) txt = `<b style="color:var(--red)">${r.loaded}개 적재 / ${r.left}개 못 실음</b><br>` + txt;
-    return [itemLabel(r.it), txt];
-  });
-  rows.push(['바닥 길이 합계', `${Math.round(usedLen)}cm / ${TL}cm (${Math.min(999, lenRate).toFixed(0)}%)`]);
-  rows.push(['실은 화물 부피', `${loadedCbm.toFixed(2)} CBM / 적재함 ${(TL * TW * TH / 1e6).toFixed(2)} CBM`]);
-  rows.push(['남은 공간', remainLen >= 1
-    ? `길이 ${Math.round(remainLen)} × 폭 ${TW} × 높이 ${TH}cm = <b>${remainCbm.toFixed(2)} CBM</b>`
-    : '없음']);
-  if (totalKg) rows.push(['총중량', `${totalKg.toFixed(0)}kg / 최대 ${payload}kg`]);
+    const laid = p.h !== r.it.h;
+    const leftLine = r.left > 0
+      ? `<div class="pack-how"><span class="pack-chip bad">${r.loaded}개만 적재 · ${r.left}개 못 실음</span></div>` : '';
+    return `<div class="pack-item">
+      <div class="pack-name">${name}</div>
+      ${leftLine}
+      <div class="pack-how">
+        <span class="pack-mode ${laid ? 'laid' : ''}">${laid ? '눕혀서' : '세워서'}</span>
+        <span class="pack-chip">폭 <b>${p.x}</b>cm · ${p.across}줄</span>
+        <span class="pack-chip">길이 <b>${p.y}</b>cm · ${r.usedCols}열</span>
+        <span class="pack-chip">높이 <b>${p.h}</b>cm · ${r.layersUsed}단</span>
+        <span class="pack-chip">바닥 <b>${Math.round(r.usedLen)}</b>cm</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  const sumRows = [
+    ['바닥 길이 합계', `${Math.round(usedLen)}cm / ${TL}cm (${Math.min(999, lenRate).toFixed(0)}%)`],
+    ['실은 화물 부피', `${loadedCbm.toFixed(2)} CBM / 적재함 ${(TL * TW * TH / 1e6).toFixed(2)} CBM`],
+    ['남은 공간', remainLen >= 1 ? `길이 ${Math.round(remainLen)} × 폭 ${TW} × 높이 ${TH}cm = <b>${remainCbm.toFixed(2)} CBM</b>` : '없음'],
+  ];
+  if (totalKg) sumRows.push(['총중량', `${totalKg.toFixed(0)}kg / 최대 ${payload}kg`]);
 
   $('#cargo-output').innerHTML = verdict
     + `<div class="gauge"><div style="width:${Math.min(100, lenRate)}%"></div></div>`
     + cargoDiagramSvg(results, TL, TW, TH)
-    + '<table class="result-table">' + rows.map(r => `<tr><td>${esc(r[0])}</td><td>${r[1]}</td></tr>`).join('') + '</table>'
-    + `<p class="fine-print top8">💡 화물별로 구간을 나눠 싣는 기준의 근사 계산입니다. 하차 순서가 늦은 짐부터 안쪽에 실으세요. 파레트 위에 박스를 겹쳐 실을 수 있으면 실제로는 더 여유가 생깁니다.</p>`;
+    + `<div class="pack-list">${packHtml}</div>`
+    + '<table class="result-table">' + sumRows.map(r => `<tr><td>${esc(r[0])}</td><td>${r[1]}</td></tr>`).join('') + '</table>'
+    + `<p class="fine-print top8">💡 화물별로 구간을 나눠 싣는 기준의 근사 계산입니다. 하차 순서가 늦은 짐부터 안쪽에 실으세요.</p>`;
   $('#cargo-result').classList.remove('hidden');
 });
 
