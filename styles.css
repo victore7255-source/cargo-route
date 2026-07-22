@@ -212,6 +212,7 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   cursor: pointer;
   font-family: inherit;
   color: var(--ink);
+  display: inline-block; text-align: center; text-decoration: none;  /* <a>로 만든 버튼도 블록처럼 */
   transition: filter .15s, transform .06s, box-shadow .15s;
 }
 .btn:active { transform: scale(0.98); }
