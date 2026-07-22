@@ -139,7 +139,7 @@ async function geocodeOrigin() {
   const r = await Geo.geocode(q).catch(() => null);
   if (r) {
     state.origin = { label: q, lat: r.lat, lng: r.lng };
-    setOriginStatus('✓ ' + r.display, 'ok');
+    setOriginStatus('✓ ' + r.display + (r.rough ? ' (대략 위치)' : ''), 'ok');
     saveState();
   } else {
     state.origin = null;
@@ -221,6 +221,7 @@ async function geocodePending(pending) {
     const r = await Geo.geocode(stop.label).catch(() => null);
     if (r) {
       stop.lat = r.lat; stop.lng = r.lng; stop.status = 'ok'; stop.display = r.display;
+      stop.rough = !!r.rough;
     } else {
       stop.status = 'error';
     }
@@ -431,6 +432,8 @@ function renderStops() {
     ].filter(Boolean).map(esc).join(' · ');
     const notes = (s.notes && s.notes.length)
       ? `<br>⚠️ <span class="note">${s.notes.map(esc).join(' / ')}</span>` : '';
+    const rough = s.rough
+      ? `<br>📍 <span class="note">정확한 번지를 찾지 못해 대략 위치입니다 — 내비 실행 후 도착지를 꼭 확인하세요</span>` : '';
     // 일정(당상당착/당상내착 등)은 자동 인식이든 직접 선택이든 항상 배지로 보여준다
     const schedBadge = s.schedule
       ? `<span class="badge sched" style="cursor:default">${esc(s.schedule)}</span>` : '';
@@ -445,7 +448,7 @@ function renderStops() {
         <button class="icon-btn si-del" data-act="del" data-i="${i}" title="삭제">✕</button>
       </div>
       <div class="si-text">${esc(s.label)}</div>
-      <div class="sub">${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(shortDisplay(s.display))}${info ? '<br>' + info : ''}${notes}</div>`;
+      <div class="sub">${s.status === 'error' ? '주소를 찾지 못함 — 눌러서 수정' : esc(shortDisplay(s.display))}${rough}${info ? '<br>' + info : ''}${notes}</div>`;
     return li;
   };
 
@@ -494,7 +497,7 @@ function renderStops() {
       stop.label = fixed.trim(); stop.status = 'pending';
       renderStops();
       const r = await Geo.geocode(stop.label).catch(() => null);
-      if (r) { stop.lat = r.lat; stop.lng = r.lng; stop.status = 'ok'; stop.display = r.display; }
+      if (r) { stop.lat = r.lat; stop.lng = r.lng; stop.status = 'ok'; stop.display = r.display; stop.rough = !!r.rough; }
       else stop.status = 'error';
       renderStops(); saveState();
     });
@@ -926,6 +929,7 @@ function renderDriveChecklist() {
       <div class="visit-name" style="font-size:17px;margin-bottom:8px">${idx + 1}. ${esc(next.label)}
         <span class="badge ${next.type === '상차' ? 'load' : 'unload'}" style="cursor:default">${next.type}</span>${next.schedule ? ` <span class="badge sched" style="cursor:default">📅 ${esc(next.schedule)}</span>` : ''}</div>
       ${next.cargo ? `<div class="visit-meta" style="margin-bottom:8px">📦 ${esc(next.cargo)}</div>` : ''}
+      ${next.rough ? `<div class="visit-meta note" style="margin-bottom:8px">📍 이 주소는 대략 위치로만 확인됐습니다 — 내비 실행 후 도착지를 꼭 확인하세요</div>` : ''}
       ${next.notes && next.notes.length ? `<div class="visit-meta note" style="margin-bottom:8px">⚠️ ${next.notes.map(esc).join(' / ')}</div>` : ''}
       ${actionHtml}
       ${contactHtml}`;
@@ -1026,7 +1030,7 @@ async function driveAddStops() {
       if (!r) { toast(`⚠️ 주소를 찾지 못해 제외: ${specs[i].label}`); continue; }
       newStops.push({
         id: uid(), ...specs[i], lat: r.lat, lng: r.lng, display: r.display,
-        status: 'ok', workMin: defaultWork,
+        rough: !!r.rough, status: 'ok', workMin: defaultWork,
       });
     }
     if (!newStops.length) { st('✗ 추가할 수 있는 주소가 없습니다. 주소를 확인해 주세요.', 'err'); return; }
