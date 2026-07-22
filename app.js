@@ -757,47 +757,68 @@ async function renderAiTips() {
 }
 
 // ─────────── 내비게이션 연동 ───────────
-// 세 앱 모두 "출발지 = 휴대폰 현재위치"로 자동 설정되며, 여기서는 도착지만 전달한다.
-// 좌표 파라미터 순서: TMAP goalx=경도/goaly=위도, 카카오 ep=위도,경도, 네이버 dlat=위도/dlng=경도
-function naviLinks(dest) {
-  if (!dest || !Number.isFinite(dest.lat) || !Number.isFinite(dest.lng)
-    || Math.abs(dest.lat) > 90 || Math.abs(dest.lng) > 180) return null;
-  const lat = (+dest.lat).toFixed(6), lng = (+dest.lng).toFixed(6);
-  const name = encodeURIComponent(String(dest.label || '목적지').slice(0, 100));
-  return {
-    tmap: `tmap://route?goalname=${name}&goalx=${lng}&goaly=${lat}`,
-    kakao: `kakaomap://route?ep=${lat},${lng}&by=CAR`,
-    naver: `nmap://route/car?dlat=${lat}&dlng=${lng}&dname=${name}&appname=cargo.route.web`,
-  };
+// 카카오·네이버는 남은 방문지를 '경유지'로 함께 넘겨 전체 경로를 한 번에 안내한다.
+// TMAP은 URL 스킴이 경유지를 지원하지 않아 '다음 목적지' 한 곳만 안내한다.
+// 좌표 순서: TMAP goalx=경도/goaly=위도, 카카오 sp/vp/ep=위도,경도, 네이버 dlat=위도/dlng=경도
+function hasCoord(s) {
+  return s && Number.isFinite(s.lat) && Number.isFinite(s.lng)
+    && Math.abs(s.lat) <= 90 && Math.abs(s.lng) <= 180;
 }
 
-/** 내비 버튼 3종 + 실행 전 목적지 확인 문구. navi-grid 컨테이너 안에 넣는다. */
-function naviButtonsHtml(dest) {
-  const links = naviLinks(dest);
-  if (!links) {
-    return `<div class="fine-print" style="grid-column:1/-1">⚠️ 이 목적지의 좌표가 확인되지 않아 내비를 실행할 수 없습니다. 경로 탭에서 주소를 수정한 뒤 경로를 다시 계산해 주세요.</div>`;
-  }
-  const sub = dest.display && dest.display !== dest.label ? `<br><span class="hint">확인된 위치: ${esc(shortDisplay(dest.display))}</span>` : '';
-  return `
-    <div class="fine-print" style="grid-column:1/-1;margin:0">🎯 안내 목적지: <b>${esc(dest.label)}</b>${sub}</div>
-    <a class="navi-btn tmap" href="${links.tmap}">TMAP<br>실행</a>
-    <a class="navi-btn kakao" href="${links.kakao}">카카오맵<br>실행</a>
-    <a class="navi-btn naver" href="${links.naver}">네이버지도<br>실행</a>`;
+/** 운행 중 '지금 출발 좌표' — 가장 최근 완료 지점(그 자리에서 다음으로 출발), 없으면 출발지 */
+function driveStartCoord() {
+  const trip = state.trip;
+  if (!trip || !trip.snapshot) return null;
+  const done = trip.snapshot.stops
+    .filter(s => trip.events[s.id] && trip.events[s.id].doneAt && hasCoord(s))
+    .sort((a, b) => trip.events[a.id].doneAt - trip.events[b.id].doneAt);
+  if (done.length) return done[done.length - 1];
+  return hasCoord(trip.snapshot.origin) ? trip.snapshot.origin : null;
 }
 
-/** 네이버지도 전체 경로 URL: 현재위치 → 경유지(최대 5) → 최종 목적지 */
-function naverFullRouteUrl(stops) {
-  const valid = stops.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lng));
-  if (valid.length < 2) return null;
-  const nm = (s) => encodeURIComponent(String(s.label || '목적지').slice(0, 60));
+/** 지도앱별 '남은 전체 경로'(경유지 포함) 실행 URL.
+ *  start=출발 좌표, stops=남은 방문지(방문 순서). 카카오·네이버는 경유지 최대 5곳. */
+function fullRouteLinks(start, stops) {
+  const valid = (stops || []).filter(hasCoord);
+  if (!valid.length) return null;
+  const latlng = s => `${(+s.lat).toFixed(6)},${(+s.lng).toFixed(6)}`;
+  const nm = s => encodeURIComponent(String(s.label || '목적지').slice(0, 60));
+  const next = valid[0];
   const dest = valid[valid.length - 1];
-  const vias = valid.slice(0, -1).slice(0, 5);   // 네이버 경유지 최대 5곳
-  let url = `nmap://route/car?dlat=${(+dest.lat).toFixed(6)}&dlng=${(+dest.lng).toFixed(6)}&dname=${nm(dest)}`;
-  vias.forEach((v, i) => {
-    url += `&v${i + 1}lat=${(+v.lat).toFixed(6)}&v${i + 1}lng=${(+v.lng).toFixed(6)}&v${i + 1}name=${nm(v)}`;
-  });
-  url += '&appname=cargo.route.web';
-  return { url, dropped: (valid.length - 1) - vias.length };
+  const vias = valid.slice(0, -1);                 // 마지막 전까지 = 경유지
+  const sp = hasCoord(start) ? start : next;       // 카카오는 출발지(sp) 필수
+
+  // TMAP — 다음 목적지 한 곳만 (경유지 미지원)
+  const tmap = `tmap://route?goalname=${nm(next)}&goalx=${(+next.lng).toFixed(6)}&goaly=${(+next.lat).toFixed(6)}`;
+
+  // 카카오맵 — 출발지 sp(필수) + 경유지 vp,vp2..vp5 + 도착지 ep
+  let kakao = `kakaomap://route?sp=${latlng(sp)}`;
+  vias.slice(0, 5).forEach((v, i) => { kakao += `&vp${i === 0 ? '' : i + 1}=${latlng(v)}`; });
+  kakao += `&ep=${latlng(dest)}&by=car`;
+
+  // 네이버지도 — 도착지 + 경유지 v1..v5
+  let naver = `nmap://route/car?dlat=${(+dest.lat).toFixed(6)}&dlng=${(+dest.lng).toFixed(6)}&dname=${nm(dest)}`;
+  vias.slice(0, 5).forEach((v, i) => { naver += `&v${i + 1}lat=${(+v.lat).toFixed(6)}&v${i + 1}lng=${(+v.lng).toFixed(6)}&v${i + 1}name=${nm(v)}`; });
+  naver += '&appname=cargo.route.web';
+
+  return { tmap, kakao, naver, next, dest, viaCount: Math.min(vias.length, 5), dropped: Math.max(0, vias.length - 5), hasVia: vias.length > 0 };
+}
+
+/** navi-grid 안에 넣을 내비 버튼 3종 + 안내 문구 */
+function fullNaviHtml(start, remaining) {
+  const links = fullRouteLinks(start, remaining);
+  if (!links) {
+    return `<div class="fine-print" style="grid-column:1/-1">⚠️ 좌표가 확인되지 않아 내비를 실행할 수 없습니다. 경로 탭에서 주소를 수정한 뒤 경로를 다시 계산해 주세요.</div>`;
+  }
+  const info = links.hasVia
+    ? `🗺️ 카카오·네이버는 <b>경유지 ${links.viaCount}곳 → 최종 ${esc(links.dest.label)}</b>까지 한 번에 안내합니다.${links.dropped ? ` (경유지는 5곳까지만 되어 ${links.dropped}곳 제외)` : ''}<br>TMAP은 경유지를 넣을 수 없어 <b>다음 ${esc(links.next.label)}</b>까지만 안내합니다.`
+    : `🎯 목적지: <b>${esc(links.dest.label)}</b>`;
+  const sub = links.hasVia ? ['전체 경로', '전체 경로', '다음 1곳'] : ['길안내', '길안내', '길안내'];
+  return `
+    <div class="fine-print" style="grid-column:1/-1;margin:0 0 2px">${info}</div>
+    <a class="navi-btn kakao" href="${links.kakao}">카카오맵<br><span class="navi-sub">${sub[0]}</span></a>
+    <a class="navi-btn naver" href="${links.naver}">네이버지도<br><span class="navi-sub">${sub[1]}</span></a>
+    <a class="navi-btn tmap" href="${links.tmap}">TMAP<br><span class="navi-sub">${sub[2]}</span></a>`;
 }
 
 $('#btn-copy-order').addEventListener('click', () => {
@@ -884,12 +905,8 @@ function renderDriveChecklist() {
     $('#next-stop-card').classList.remove('hidden');
     const act = next.type === '상차' ? '상차' : '하차';
 
-    // 네이버로 남은 경로 전체(경유지 포함) 안내 버튼
+    // 남은 전체 경로(경유지 포함) 내비 대상
     const remaining = stops.filter(s => !(trip.events[s.id] && trip.events[s.id].doneAt));
-    const nf = naverFullRouteUrl(remaining);
-    const nbtn = $('#btn-naver-full');
-    if (nf) { nbtn.style.display = ''; nbtn.href = nf.url; }
-    else { nbtn.style.display = 'none'; }
 
     // 현장 담당자에게: 전화(번호별) + '가는 길' 안내 문자(화물·특이사항 포함)
     const nphones = stopPhones(next);
@@ -912,7 +929,7 @@ function renderDriveChecklist() {
       ${next.notes && next.notes.length ? `<div class="visit-meta note" style="margin-bottom:8px">⚠️ ${next.notes.map(esc).join(' / ')}</div>` : ''}
       ${actionHtml}
       ${contactHtml}`;
-    $('#drive-navi').innerHTML = naviButtonsHtml(next);
+    $('#drive-navi').innerHTML = fullNaviHtml(driveStartCoord(), remaining);
   } else {
     $('#next-stop-card').classList.add('hidden');
   }

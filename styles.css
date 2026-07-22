@@ -362,6 +362,7 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 .navi-btn.tmap { background: #2657e0; }
 .navi-btn.kakao { background: #fee500; color: #191919; }
 .navi-btn.naver { background: #03c75a; }
+.navi-sub { font-size: 12px; font-weight: 700; opacity: .82; margin-top: 2px; }
 .fine-print { font-size: 13px; color: var(--ink-dim); margin-top: 9px; line-height: 1.55; }
 
 /* ── AI 추천 ── */
