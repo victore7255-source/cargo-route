@@ -14,7 +14,7 @@
 const Geo = (() => {
   const CACHE_KEY = 'cargo-geo-cache-v2'; // v2: 카카오 도입 — 이전(부정확할 수 있는) 캐시 폐기
   const MIN_INTERVAL = 1100; // ms — Nominatim 정책(1 req/sec)
-  const KAKAO_KEY = '';      // ← 카카오 REST API 키를 넣으면 정확 모드 활성화
+  const KAKAO_KEY = '12b10d692451d5514f300f5199078607'; // 카카오 REST API 키 — 정확 모드 활성화
   const KAKAO_KEY_STORE = 'cargo-kakao-key';
   let cache = {};
   try { cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); } catch (e) { cache = {}; }
