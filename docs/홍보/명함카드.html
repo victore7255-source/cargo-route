@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>화물 혼적 경로 — 홍보 명함카드 (인쇄용)</title>
+<style>
+  /* 인쇄 규격: 재단 90×54mm + 사방 1mm 여유 = 92×56mm 캔버스.
+     인쇄소(성원애드피아 등) 주문 시 "명함 90×54" 선택, 이 PDF 그대로 업로드. */
+  @page { size: 92mm 56mm; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif; }
+  .card {
+    width: 92mm; height: 56mm;
+    page-break-after: always;
+    position: relative; overflow: hidden;
+  }
+
+  /* ── 앞면: 딥 틸 + QR ── */
+  .front { background: linear-gradient(135deg, #175648 0%, #1e6b5a 55%, #2a8570 100%); color: #fff; }
+  .front .inner { position: absolute; inset: 4mm; display: flex; align-items: center; gap: 4mm; }
+  .front .left { flex: 1; min-width: 0; }
+  .logo-row { display: flex; align-items: center; gap: 2mm; margin-bottom: 2.2mm; }
+  .logo { width: 8mm; height: 8mm; background: rgba(255,255,255,.15); border-radius: 2.2mm;
+          display: flex; align-items: center; justify-content: center; font-size: 5mm; }
+  .app-name { font-size: 5.4mm; font-weight: 800; letter-spacing: -0.3px; line-height: 1.15; }
+  .app-sub { font-size: 2.6mm; opacity: .85; font-weight: 600; }
+  .headline { font-size: 3.6mm; font-weight: 800; line-height: 1.45; margin-bottom: 2mm; }
+  .headline b { color: #ffd987; }
+  .free-badge { display: inline-block; background: #ffd987; color: #4a3200; font-weight: 800;
+                font-size: 2.8mm; padding: 1mm 2.6mm; border-radius: 99px; }
+  .qr-panel { background: #fff; border-radius: 2.5mm; padding: 2mm; text-align: center; flex-shrink: 0; }
+  .qr-panel img { width: 24mm; height: 24mm; display: block; }
+  .qr-cap { font-size: 2.2mm; color: #175648; font-weight: 800; margin-top: 1mm; line-height: 1.3; }
+
+  /* ── 뒷면: 사용법 + 기능 ── */
+  .back { background: #f4f9f6; color: #1d3229; }
+  .back .inner { position: absolute; inset: 3.5mm 4mm; display: flex; flex-direction: column; }
+  .back h2 { font-size: 3.2mm; font-weight: 800; color: #175648; margin-bottom: 1.6mm; }
+  .steps { display: flex; gap: 1.6mm; margin-bottom: 2mm; }
+  .step { flex: 1; background: #fff; border: 0.35mm solid #dde8e1; border-radius: 2mm; padding: 1.6mm; }
+  .step .n { display: inline-flex; width: 4mm; height: 4mm; border-radius: 99px; background: #1e6b5a; color: #fff;
+             align-items: center; justify-content: center; font-size: 2.4mm; font-weight: 800; margin-bottom: 0.8mm; }
+  .step .t { font-size: 2.5mm; font-weight: 800; line-height: 1.35; }
+  .step .d { font-size: 2.1mm; color: #64796e; line-height: 1.35; margin-top: 0.4mm; }
+  .feats { display: flex; flex-wrap: wrap; gap: 1.2mm; margin-bottom: auto; }
+  .feat { background: #e3f0ea; color: #175648; font-size: 2.3mm; font-weight: 700;
+          padding: 0.9mm 2mm; border-radius: 99px; }
+  .feat.pro { background: #fbf0dd; color: #8a5a10; }
+  .foot { display: flex; justify-content: space-between; align-items: flex-end; border-top: 0.3mm solid #dde8e1; padding-top: 1.2mm; }
+  .foot .price { font-size: 2.3mm; font-weight: 800; color: #175648; line-height: 1.4; }
+  .foot .price small { font-weight: 600; color: #64796e; font-size: 2mm; }
+  .foot .url { font-size: 2mm; color: #64796e; text-align: right; line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<!-- ══ 앞면 ══ -->
+<div class="card front">
+  <div class="inner">
+    <div class="left">
+      <div class="logo-row">
+        <div class="logo">🚚</div>
+        <div>
+          <div class="app-name">화물 혼적 경로</div>
+          <div class="app-sub">화물기사 전용 AI 운행 비서</div>
+        </div>
+      </div>
+      <div class="headline">배차 문자 <b>붙여넣기만 하면</b><br>경로 순서 · 적재 계산 끝.</div>
+      <div class="free-badge">✓ 기본 기능 무료 · 설치 없이 바로</div>
+    </div>
+    <div class="qr-panel">
+      <img src="data:image/png;base64,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" alt="QR">
+      <div class="qr-cap">📷 카메라로 찍으면<br>바로 실행됩니다</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 뒷면 ══ -->
+<div class="card back">
+  <div class="inner">
+    <h2>🚛 이렇게 씁니다 — 딱 3번</h2>
+    <div class="steps">
+      <div class="step"><span class="n">1</span><div class="t">배차 문자<br>통째로 붙여넣기</div><div class="d">주소·연락처·화물<br>자동 인식</div></div>
+      <div class="step"><span class="n">2</span><div class="t">AI가 최적<br>방문 순서 계산</div><div class="d">혼적 여러 곳도<br>한 번에</div></div>
+      <div class="step"><span class="n">3</span><div class="t">내비 연결 ·<br>완료 보고 문자</div><div class="d">카카오·네이버·TMAP<br>버튼 하나로</div></div>
+    </div>
+    <div class="feats">
+      <span class="feat">혼적 경로 최적화</span>
+      <span class="feat">적재함 배치 그림</span>
+      <span class="feat">도착예정 시간</span>
+      <span class="feat">주유·충전소 추천</span>
+      <span class="feat pro">★ 운행기록·운송료 정산</span>
+    </div>
+    <div class="foot">
+      <div class="price">기본 무료<br><small>프리미엄(기록·정산)은 한 달 무료체험 후 선택</small></div>
+      <div class="url">victore7255-source.github.io<br>/cargo-route</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
