@@ -1613,6 +1613,19 @@ function initInstall() {
   });
 }
 
+// ─────────── 앱 공유 (기사님들끼리 카톡·문자로 전달) ───────────
+$('#btn-share-app').addEventListener('click', async () => {
+  const url = location.origin + location.pathname;
+  const text = '🚚 화물 혼적 경로 — 배차 문자를 붙여넣으면 방문 순서·적재 계산이 자동으로 나옵니다. 기본 무료니까 한번 써보세요!';
+  if (navigator.share) {
+    try { await navigator.share({ title: '화물 혼적 경로', text, url }); } catch (e) { /* 사용자가 취소 */ }
+    return;
+  }
+  navigator.clipboard.writeText(text + '\n' + url)
+    .then(() => toast('📋 소개 문구를 복사했습니다 — 카톡·문자에 붙여넣어 보내세요', 4500))
+    .catch(() => toast('복사에 실패했습니다'));
+});
+
 // ─────────── 테마 전환 ───────────
 function currentTheme() {
   const set = document.documentElement.dataset.theme;
