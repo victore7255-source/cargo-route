@@ -5,18 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes, maximum-scale=6.0">
   <meta name="theme-color" content="#e9f2ec" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#101a15" media="(prefers-color-scheme: dark)">
-  <title>화물 혼적 경로 — AI 화물 운행 비서</title>
+  <title>[미리보기] 화물 혼적 경로 — AI 화물 운행 비서</title>
   <meta name="description" content="여러 배송지의 방문 순서를 AI가 자동 최적화하고, TMAP·카카오맵·네이버지도로 바로 안내를 시작하는 화물기사 전용 운행 비서">
   <meta property="og:title" content="화물 혼적 경로 — AI 화물 운행 비서">
   <meta property="og:description" content="배송지를 붙여넣으면 AI가 가장 빠른 방문 순서를 계산하고, 적재까지 시각적으로 계산해 주는 화물기사 전용 앱.">
   <meta property="og:image" content="og-링크미리보기.png">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../icon-192.png">
+  
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="styles.css?v=20260724b">
-  <link rel="stylesheet" href="addons/features.css?v=20260724b">
+  <link rel="stylesheet" href="../styles.css?v=20260722l">
   <script>
     // 첫 화면 깜빡임 방지: 저장된 테마를 그리기 전에 적용
     (function () {
@@ -24,6 +23,7 @@
       if (t) document.documentElement.dataset.theme = t;
     })();
   </script>
+  <link rel="stylesheet" href="features.css?v=preview">
 </head>
 <body>
 
@@ -145,8 +145,6 @@
       <p class="fine-print center">운행을 시작하면 목적지마다 <b>내비·전화·도착 문자</b> 버튼이 순서대로 나옵니다.</p>
       <button class="btn secondary full top8" id="btn-copy-order">📋 방문 순서 전체 복사</button>
     </div>
-
-    <button class="btn ghost full" id="btn-share-app" style="margin-top:14px">📤 동료 기사님께 이 앱 공유 (카톡·문자)</button>
   </section>
 
   <!-- ══════════════ 운행 탭 ══════════════ -->
@@ -252,13 +250,13 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="geo.js?v=20260724b"></script>
-<script src="sms.js?v=20260724b"></script>
-<script src="route.js?v=20260724b"></script>
-<script src="app.js?v=20260724b"></script>
-<script src="addons/membership.js?v=20260724b"></script>
-<script src="addons/stations.js?v=20260724b"></script>
-<script src="addons/records.js?v=20260724b"></script>
-<script src="addons/paidmap.js?v=20260724b"></script>
+<script src="../geo.js?v=20260722l"></script>
+<script src="../sms.js?v=20260722l"></script>
+<script src="../route.js?v=20260722l"></script>
+<script src="../app.js?v=20260722l"></script>
+<script src="membership.js?v=preview"></script>
+<script src="stations.js?v=preview"></script>
+<script src="records.js?v=preview"></script>
+<script src="paidmap.js?v=preview"></script>
 </body>
 </html>

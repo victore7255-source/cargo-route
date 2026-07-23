@@ -30,6 +30,23 @@ function esc(s) {
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
+// ─────────── 오류 자동 기록 (안정화) ───────────
+// 오류가 나도 화면은 조용히 두고, 원인 추적용 흔적만 이 휴대폰에 남긴다.
+// 확인: 콘솔에서 JSON.parse(localStorage.getItem('cargo-errlog'))
+function logError(msg) {
+  try {
+    const log = JSON.parse(localStorage.getItem('cargo-errlog') || '[]');
+    log.unshift(new Date().toISOString().slice(0, 16) + ' ' + String(msg).slice(0, 200));
+    localStorage.setItem('cargo-errlog', JSON.stringify(log.slice(0, 30)));
+  } catch (e) { /* ignore */ }
+}
+window.addEventListener('error', (e) => {
+  logError((e.message || '오류') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0));
+});
+window.addEventListener('unhandledrejection', (e) => {
+  logError('promise: ' + ((e.reason && e.reason.message) || e.reason));
+});
+
 // ─────────── 방문 날짜 (당상내착 등 일정 → 실제 날짜) ───────────
 function isoDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

@@ -1,0 +1,156 @@
+/* ══════════════ features.css — 추가 기능(기록·주유소·회원) 스타일 ══════════════
+ * styles.css의 디자인 토큰(--brand, --card, --line 등)만 사용 — 라이트/다크 자동 대응.
+ */
+
+/* ── 유료 배지 · 잠금 ── */
+.paid-badge {
+  display: inline-flex; align-items: center;
+  font-size: 12px; font-weight: 800; letter-spacing: -0.01em;
+  padding: 3px 10px; border-radius: 999px;
+  background: linear-gradient(140deg, var(--brand), var(--brand-deep));
+  color: var(--on-brand);
+  vertical-align: middle;
+}
+.paid-badge.trial { background: var(--amber-soft); color: var(--amber); }
+.lock-card { border-style: dashed; }
+
+/* ── 회원 안내 모달 ── */
+.mm-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(10, 20, 15, .55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  backdrop-filter: blur(3px);
+}
+.mm-modal {
+  width: 100%; max-width: 420px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px 18px;
+  box-shadow: var(--shadow);
+  max-height: 86vh; overflow-y: auto;
+  animation: rise .25s ease both;
+}
+.mm-title { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; }
+.mm-desc { font-size: 15px; color: var(--ink); line-height: 1.6; margin-bottom: 12px; }
+.mm-benefits { list-style: none; margin: 0 0 12px; }
+.mm-benefits li {
+  background: var(--card-sub);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 7px;
+  font-size: 14.5px; line-height: 1.55;
+}
+.mm-price {
+  text-align: center; font-size: 16px; font-weight: 800; color: var(--brand);
+  margin-bottom: 12px;
+}
+
+/* ── 운송료 입력(운행 건) ── */
+.job-row {
+  background: var(--card-sub);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 13px;
+  margin-bottom: 8px;
+}
+.job-row + .job-row { margin-top: 8px; }
+.job-label {
+  background: none; border: none; font-family: inherit;
+  font-size: 15.5px; font-weight: 700; color: var(--ink);
+  text-align: left; padding: 4px 0; cursor: pointer;
+  min-width: 0; white-space: normal; line-height: 1.4;
+}
+.money-wrap { position: relative; }
+.money-wrap .money { padding-right: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.money-suffix {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 15px; font-weight: 700; color: var(--ink-dim);
+  pointer-events: none;
+}
+.cargo-link { width: 100%; justify-content: flex-start; }
+.cargo-select {
+  margin-top: 8px;
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+}
+.cargo-opt {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 8px 4px; font-size: 14.5px; line-height: 1.5;
+  cursor: pointer;
+}
+.cargo-opt input[type="checkbox"] {
+  width: 20px; height: 20px; margin-top: 2px; flex-shrink: 0;
+  accent-color: var(--brand);
+}
+
+/* ── 기록 탭 ── */
+.lock-saved {
+  margin: 12px auto 0; max-width: 300px;
+  background: var(--brand-soft); color: var(--brand);
+  border-radius: 14px; padding: 12px;
+  font-size: 14.5px; line-height: 1.6;
+}
+.lock-saved b { font-size: 19px; }
+.trial-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: var(--amber-soft); color: var(--amber);
+  border-radius: 12px; padding: 9px 12px;
+  font-size: 13.5px; margin-top: 8px;
+}
+.log-day { margin-bottom: 14px; }
+.log-date-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 14px; font-weight: 800; color: var(--ink-dim);
+  border-bottom: 1.5px solid var(--line);
+  padding-bottom: 5px; margin-bottom: 7px;
+}
+.log-entry {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card-sub);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 6px 9px 12px;
+  margin-bottom: 6px;
+}
+.log-entry.active-job { border-left: 5px solid var(--brand); }
+.log-label { font-size: 14.5px; font-weight: 700; line-height: 1.4; }
+.fare-chip {
+  border: none; border-radius: 999px; font-family: inherit;
+  background: var(--brand-soft); color: var(--brand);
+  font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums;
+  min-height: 34px; padding: 5px 12px; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+.fare-chip.missing { background: var(--red-soft); color: var(--red); }
+.log-trip {
+  font-size: 13px; color: var(--ink-dim);
+  padding: 5px 12px; margin-bottom: 6px;
+  border-left: 3px solid var(--line);
+}
+
+/* ── 주유소 탭 ── */
+.stn-card {
+  display: flex; gap: 11px;
+  background: var(--card-sub);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 13px;
+  margin-bottom: 8px;
+}
+.stn-rank {
+  width: 30px; height: 30px; flex-shrink: 0;
+  border-radius: 999px;
+  background: linear-gradient(140deg, var(--brand), var(--brand-deep));
+  color: var(--on-brand);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 800;
+}
+.stn-body { flex: 1; min-width: 0; }
+.stn-name { font-size: 15.5px; font-weight: 800; line-height: 1.4; }
+.stn-meta { font-size: 13.5px; color: var(--ink-dim); margin-top: 3px; line-height: 1.5; }
+
+/* ── 탭 5개일 때 살짝 좁게 ── */
+#tabs .tab { padding-left: 0; padding-right: 0; }
