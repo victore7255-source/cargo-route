@@ -124,6 +124,7 @@ $$('#tabs .tab').forEach(btn => {
 function switchTab(name) {
   $$('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  window.scrollTo(0, 0);   // 탭이 바뀌면 항상 맨 위부터 (이전 탭의 스크롤 위치가 남지 않게)
   if (name === 'drive') renderDrive();
   if (name === 'route' && map) setTimeout(() => map.invalidateSize(), 100);
 }
