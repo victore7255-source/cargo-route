@@ -760,9 +760,11 @@ async function renderAiTips() {
 }
 
 // ─────────── 내비게이션 연동 ───────────
-// 카카오·네이버는 남은 방문지를 '경유지'로 함께 넘겨 전체 경로를 한 번에 안내한다.
-// TMAP은 URL 스킴이 경유지를 지원하지 않아 '다음 목적지' 한 곳만 안내한다.
-// 좌표 순서: TMAP goalx=경도/goaly=위도, 카카오 sp/vp/ep=위도,경도, 네이버 dlat=위도/dlng=경도
+// 네이버만 URL로 경유지를 지원해 남은 방문지 전체를 한 번에 안내한다.
+// 카카오·TMAP은 URL 스킴이 경유지를 지원하지 않아 '다음 목적지' 한 곳만 안내한다.
+// (카카오 vp 파라미터는 비공식이라 실제 앱에서 무시됨 — 실기기 확인)
+// 카카오는 출발지(sp)가 필수 — 버튼을 누를 때 GPS 현재 위치로 바꿔 넣는다.
+// 좌표 순서: TMAP goalx=경도/goaly=위도, 카카오 sp/ep=위도,경도, 네이버 dlat=위도/dlng=경도
 function hasCoord(s) {
   return s && Number.isFinite(s.lat) && Number.isFinite(s.lng)
     && Math.abs(s.lat) <= 90 && Math.abs(s.lng) <= 180;
@@ -791,13 +793,12 @@ function fullRouteLinks(start, stops) {
   const vias = valid.slice(0, -1);                 // 마지막 전까지 = 경유지
   const sp = hasCoord(start) ? start : next;       // 카카오는 출발지(sp) 필수
 
-  // TMAP — 다음 목적지 한 곳만 (경유지 미지원)
+  // TMAP — 다음 목적지 한 곳만 (경유지 미지원, 출발지는 TMAP이 GPS로 잡음)
   const tmap = `tmap://route?goalname=${nm(next)}&goalx=${(+next.lng).toFixed(6)}&goaly=${(+next.lat).toFixed(6)}`;
 
-  // 카카오맵 — 출발지 sp(필수) + 경유지 vp,vp2..vp5 + 도착지 ep
-  let kakao = `kakaomap://route?sp=${latlng(sp)}`;
-  vias.slice(0, 5).forEach((v, i) => { kakao += `&vp${i === 0 ? '' : i + 1}=${latlng(v)}`; });
-  kakao += `&ep=${latlng(dest)}&by=car`;
+  // 카카오맵 — 경유지 미지원: 출발지 sp(필수) → 다음 목적지 1곳.
+  // sp는 우선 마지막 완료 지점으로 넣고, 버튼 클릭 때 GPS 현재 위치로 교체한다.
+  const kakao = `kakaomap://route?sp=${latlng(sp)}&ep=${latlng(next)}&by=car`;
 
   // 네이버지도 — 도착지 + 경유지 v1..v5
   let naver = `nmap://route/car?dlat=${(+dest.lat).toFixed(6)}&dlng=${(+dest.lng).toFixed(6)}&dname=${nm(dest)}`;
@@ -814,14 +815,33 @@ function fullNaviHtml(start, remaining) {
     return `<div class="fine-print" style="grid-column:1/-1">⚠️ 좌표가 확인되지 않아 내비를 실행할 수 없습니다. 경로 탭에서 주소를 수정한 뒤 경로를 다시 계산해 주세요.</div>`;
   }
   const info = links.hasVia
-    ? `🗺️ 카카오·네이버는 <b>경유지 ${links.viaCount}곳 → 최종 ${esc(links.dest.label)}</b>까지 한 번에 안내합니다.${links.dropped ? ` (경유지는 5곳까지만 되어 ${links.dropped}곳 제외)` : ''}<br>TMAP은 경유지를 넣을 수 없어 <b>다음 ${esc(links.next.label)}</b>까지만 안내합니다.`
+    ? `🗺️ 네이버지도는 <b>경유지 ${links.viaCount}곳 → 최종 ${esc(links.dest.label)}</b>까지 한 번에 안내합니다.${links.dropped ? ` (경유지는 5곳까지만 되어 ${links.dropped}곳 제외)` : ''}<br>카카오맵·TMAP은 경유지를 넣을 수 없어 <b>다음 ${esc(links.next.label)}</b>까지 안내합니다.`
     : `🎯 목적지: <b>${esc(links.dest.label)}</b>`;
-  const sub = links.hasVia ? ['전체 경로', '전체 경로', '다음 1곳'] : ['길안내', '길안내', '길안내'];
+  const sub = links.hasVia ? ['다음 1곳', '전체 경로', '다음 1곳'] : ['길안내', '길안내', '길안내'];
   return `
     <div class="fine-print" style="grid-column:1/-1;margin:0 0 2px">${info}</div>
     <a class="navi-btn kakao" href="${links.kakao}">카카오맵<br><span class="navi-sub">${sub[0]}</span></a>
     <a class="navi-btn naver" href="${links.naver}">네이버지도<br><span class="navi-sub">${sub[1]}</span></a>
     <a class="navi-btn tmap" href="${links.tmap}">TMAP<br><span class="navi-sub">${sub[2]}</span></a>`;
+}
+
+/** 카카오맵 버튼: 누르는 순간 GPS 현재 위치를 출발지(sp)로 바꿔 실행한다.
+ *  (카카오는 sp가 필수인데, 미리 넣어둔 값은 마지막 완료 지점이라 현재 위치와 다를 수 있다) */
+function hookKakaoGps(root) {
+  const btn = root && root.querySelector('a.navi-btn.kakao');
+  if (!btn) return;
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const href = btn.getAttribute('href');
+    const go = (url) => { window.location.href = url; };
+    if (!navigator.geolocation) { go(href); return; }
+    toast('📡 현재 위치를 출발지로 잡는 중…', 2000);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => go(href.replace(/sp=[^&]*/, `sp=${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`)),
+      () => go(href),   // 위치를 못 가져오면 기존 값(마지막 완료 지점)으로라도 실행
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+    );
+  });
 }
 
 $('#btn-copy-order').addEventListener('click', () => {
@@ -934,6 +954,7 @@ function renderDriveChecklist() {
       ${actionHtml}
       ${contactHtml}`;
     $('#drive-navi').innerHTML = fullNaviHtml(driveStartCoord(), remaining);
+    hookKakaoGps($('#drive-navi'));
   } else {
     $('#next-stop-card').classList.add('hidden');
   }
