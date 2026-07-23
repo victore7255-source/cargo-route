@@ -152,5 +152,5 @@
 .stn-name { font-size: 15.5px; font-weight: 800; line-height: 1.4; }
 .stn-meta { font-size: 13.5px; color: var(--ink-dim); margin-top: 3px; line-height: 1.5; }
 
-/* ── 탭 5개일 때 살짝 좁게 ── */
-#tabs .tab { padding-left: 0; padding-right: 0; }
+/* ── 탭 5개: 여백은 줄이고 글씨는 키워서(고령 배려) ── */
+#tabs .tab { padding-left: 0; padding-right: 0; font-size: 15px; letter-spacing: -0.04em; }
