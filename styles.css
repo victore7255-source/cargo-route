@@ -518,3 +518,13 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
 
 /* 운행 중 지점 빼기 버튼 (배차 취소·중복 실수용) */
 .mini-btn.remove { background: var(--red-soft); color: var(--red); }
+
+/* 아이폰 [붙여넣기] 말풍선을 놓치지 않게 하는 큰 안내판 */
+.paste-hint {
+  background: var(--amber-soft); color: var(--amber);
+  border: 2px solid var(--amber);
+  font-size: 17px; font-weight: 800; text-align: center;
+  padding: 12px; border-radius: 12px; margin-bottom: 10px;
+  animation: pastePulse 1s ease-in-out infinite;
+}
+@keyframes pastePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }

@@ -270,11 +270,21 @@ async function geocodePending(pending) {
 }
 
 // ─────────── 붙여넣기 버튼 (입력칸 길게 누르기 없이 한 번에) ───────────
-async function pasteClipboard(sel) {
+async function pasteClipboard(sel, anchorBtn) {
   if (!navigator.clipboard || !navigator.clipboard.readText) {
     toast('이 브라우저는 버튼 붙여넣기가 안 됩니다. 입력칸을 길게 눌러 [붙여넣기] 해주세요.', 5000);
     return null;
   }
+  // 아이폰은 작은 [붙여넣기] 말풍선을 한 번 눌러줘야 한다 — 놓치지 않게 큰 안내판을 띄운다.
+  // (안드로이드처럼 바로 되는 폰에서는 안내판이 뜨기 전에 끝나서 보이지 않는다)
+  let hint = null;
+  const hintTimer = setTimeout(() => {
+    hint = document.createElement('div');
+    hint.className = 'paste-hint';
+    hint.innerHTML = '☝️ 화면에 뜬 <b>[붙여넣기]</b> 글자를 눌러주세요';
+    const anchor = anchorBtn || $(sel);
+    anchor.parentNode.insertBefore(hint, anchor);
+  }, 350);
   try {
     const t = ((await navigator.clipboard.readText()) || '').trim();
     if (!t) {
@@ -284,16 +294,18 @@ async function pasteClipboard(sel) {
     $(sel).value = t;
     return t;
   } catch (e) {
-    // 아이폰은 처음에 '붙여넣기 허용' 말풍선이 뜬다 — 거부했거나 지원 안 되는 경우
     toast('붙여넣기가 허용되지 않았습니다. 입력칸을 길게 눌러 [붙여넣기] 해주세요.', 5000);
     return null;
+  } finally {
+    clearTimeout(hintTimer);
+    if (hint) hint.remove();
   }
 }
 $('#btn-paste-sms').addEventListener('click', async () => {
-  if (await pasteClipboard('#sms-input')) $('#btn-parse-sms').click();
+  if (await pasteClipboard('#sms-input', $('#btn-paste-sms'))) $('#btn-parse-sms').click();
 });
 $('#btn-paste-drive').addEventListener('click', async () => {
-  if (await pasteClipboard('#drive-add-input')) $('#btn-drive-add').click();
+  if (await pasteClipboard('#drive-add-input', $('#btn-paste-drive'))) $('#btn-drive-add').click();
 });
 
 // ─────────── 문자 붙여넣기 ───────────
