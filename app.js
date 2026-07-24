@@ -251,6 +251,33 @@ async function geocodePending(pending) {
   saveState();
 }
 
+// ─────────── 붙여넣기 버튼 (입력칸 길게 누르기 없이 한 번에) ───────────
+async function pasteClipboard(sel) {
+  if (!navigator.clipboard || !navigator.clipboard.readText) {
+    toast('이 브라우저는 버튼 붙여넣기가 안 됩니다. 입력칸을 길게 눌러 [붙여넣기] 해주세요.', 5000);
+    return null;
+  }
+  try {
+    const t = ((await navigator.clipboard.readText()) || '').trim();
+    if (!t) {
+      toast('복사된 내용이 없습니다. 문자 앱에서 배차 문자를 길게 눌러 [복사]부터 해주세요.', 5000);
+      return null;
+    }
+    $(sel).value = t;
+    return t;
+  } catch (e) {
+    // 아이폰은 처음에 '붙여넣기 허용' 말풍선이 뜬다 — 거부했거나 지원 안 되는 경우
+    toast('붙여넣기가 허용되지 않았습니다. 입력칸을 길게 눌러 [붙여넣기] 해주세요.', 5000);
+    return null;
+  }
+}
+$('#btn-paste-sms').addEventListener('click', async () => {
+  if (await pasteClipboard('#sms-input')) $('#btn-parse-sms').click();
+});
+$('#btn-paste-drive').addEventListener('click', async () => {
+  if (await pasteClipboard('#drive-add-input')) $('#btn-drive-add').click();
+});
+
 // ─────────── 문자 붙여넣기 ───────────
 let smsParsed = [];
 let smsMeta = { schedule: null, items: [] };
