@@ -198,6 +198,17 @@ $('#btn-new-route').addEventListener('click', () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
+/** 같은 주소·같은 상/하차가 이미 목록에 있는가 (실수로 두 번 붙여넣기 방지) */
+// 비교용 주소 정규화: 띄어쓰기 차이와 끝의 '상차/하차' 표기는 같은 주소로 본다
+function normLabel(s) {
+  return String(s || '').replace(/(상차지|하차지|상차|하차)\s*$/, '').replace(/\s+/g, '');
+}
+function isDupStop(label, type, batch, pool) {
+  const n = normLabel(label);
+  const base = pool || state.stops.filter(s => !isFutureStop(s));
+  return [...base, ...(batch || [])].some(x => normLabel(x.label) === n && x.type === type);
+}
+
 async function addStopsFromInput() {
   const raw = $('#stops-input').value;
   const lines = raw.split('\n').map(s => s.trim()).filter(Boolean);
@@ -218,10 +229,17 @@ async function addStopsFromInput() {
 
   // 일정 버튼이 선택돼 있으면 직접 입력한 배송지(기본 하차)에도 하차일을 적용
   const dates = scheduleDates(manualSched);
-  const pending = lines.map(label => ({
-    id: uid(), label, lat: null, lng: null, type: '하차', workMin: defaultWork, status: 'pending',
-    schedule: manualSched || '', visitDate: dates.unload,
-  }));
+  const pending = [];
+  let dupCount = 0;
+  lines.forEach(label => {
+    if (isDupStop(label, '하차', pending)) { dupCount++; return; }
+    pending.push({
+      id: uid(), label, lat: null, lng: null, type: '하차', workMin: defaultWork, status: 'pending',
+      schedule: manualSched || '', visitDate: dates.unload,
+    });
+  });
+  if (dupCount) toast(`⚠️ 이미 있는 배송지 ${dupCount}곳은 건너뛰었습니다 (중복 방지)`, 4000);
+  if (!pending.length) { renderStops(); return; }
   if (pending.some(isFutureStop)) {
     toast(`📅 ${manualSched} — 하차일(${fmtDateK(dates.unload)})이 내일 이후라 오늘 경로에서 제외됩니다`, 4500);
   }
@@ -390,15 +408,28 @@ async function addSmsStops() {
   const defaultWork = parseInt($('#default-work').value, 10);
   const schedLabel = smsMeta.schedule ? smsMeta.schedule.label : '';
   const dates = scheduleDates(schedLabel);
-  const pending = smsParsed.map(p => ({
-    id: uid(), label: p.address, lat: null, lng: null,
-    type: p.type, workMin: defaultWork, status: 'pending',
-    phone: p.phone || '', phones: (p.phones && p.phones.length) ? p.phones : (p.phone ? [p.phone] : []),
-    contactName: p.contactName || '',
-    cargo: p.cargo || '', podPhone: p.podPhone || '',
-    notes: p.notes || [], schedule: schedLabel,
-    visitDate: p.type === '상차' ? dates.load : dates.unload,
-  }));
+  const pending = [];
+  let dupCount = 0;
+  smsParsed.forEach(p => {
+    if (isDupStop(p.address, p.type, pending)) { dupCount++; return; }
+    pending.push({
+      id: uid(), label: p.address, lat: null, lng: null,
+      type: p.type, workMin: defaultWork, status: 'pending',
+      phone: p.phone || '', phones: (p.phones && p.phones.length) ? p.phones : (p.phone ? [p.phone] : []),
+      contactName: p.contactName || '',
+      cargo: p.cargo || '', podPhone: p.podPhone || '',
+      notes: p.notes || [], schedule: schedLabel,
+      visitDate: p.type === '상차' ? dates.load : dates.unload,
+    });
+  });
+  if (dupCount) toast(`⚠️ 이미 있는 배송지 ${dupCount}곳은 건너뛰었습니다 (같은 문자를 두 번 넣어도 한 번만 담깁니다)`, 4500);
+  if (!pending.length) {
+    smsParsed = [];
+    smsMeta = { schedule: null, items: [], client: null };
+    $('#sms-input').value = '';
+    $('#sms-preview').classList.add('hidden');
+    return;
+  }
   if (dates.confirm) {
     toast(`📅 "${schedLabel}" 일정 — 월요일(${fmtDateK(isoDate(nextMonday()))})로 잡았습니다. 지정일이 다르면 날짜 배지를 눌러 수정하세요.`, 5000);
   } else if (pending.some(isFutureStop)) {
@@ -1027,11 +1058,23 @@ function renderDriveChecklist() {
         ${stopPhones(s).map((ph, i) => `<a class="mini-btn" href="${telLink(ph)}" title="현장 ${ph}">📞${stopPhones(s).length > 1 ? (i + 1) : ''}</a>`).join('')}
         ${ev.doneAt && clientPhone() ? `<a class="mini-btn done" href="${smsLink(clientPhone(), completeMsg(s))}">✉️ ${s.type} 완료 보고</a>` : ''}
         ${ev.doneAt && s.podPhone ? `<a class="mini-btn" href="${smsLink(s.podPhone, '안녕하세요, 화물 기사입니다. 인수증 사진 보내드립니다. (사진을 첨부해 주세요)')}">📸 인수증 전송</a>` : ''}
+        ${ev.doneAt ? '' : `<button class="mini-btn remove" data-act="remove" data-id="${s.id}" title="배차 취소·중복 실수일 때 이 지점만 빼기">✕ 빼기</button>`}
       </div>`;
     ul.appendChild(li);
   });
-  // 다음 목적지 카드 + 체크리스트의 모든 도착·완료 버튼에 동작 연결
+  // 다음 목적지 카드 + 체크리스트의 모든 도착·완료·빼기 버튼에 동작 연결
   $('#drive-active').querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
+    // 지점 빼기: 배차가 취소됐거나 실수로 중복 추가된 경우 한 건만 제거
+    if (b.dataset.act === 'remove') {
+      const s = state.trip.snapshot.stops.find(x => x.id === b.dataset.id);
+      if (!s) return;
+      if (!confirm(`"${s.label}" (${s.type})를 이번 운행에서 뺄까요?\n(배차 취소·중복 실수일 때 사용합니다)`)) return;
+      state.trip.snapshot.stops = state.trip.snapshot.stops.filter(x => x.id !== b.dataset.id);
+      state.stops = state.stops.filter(x => x.id !== b.dataset.id);
+      saveState(); renderStops(); renderDriveChecklist();
+      toast('✕ 이번 운행에서 뺐습니다');
+      return;
+    }
     const ev = state.trip.events[b.dataset.id] || (state.trip.events[b.dataset.id] = {});
     if (b.dataset.act === 'arrive') ev.arrivedAt = Date.now();
     if (b.dataset.act === 'done') {
@@ -1087,6 +1130,18 @@ async function driveAddStops() {
         phone: '', contactName: '', cargo: '', podPhone: '', notes: [], schedule: '',
       }));
     }
+
+    // 아직 안 간 지점과 같은 주소·상하차는 건너뛴다 (같은 문자 두 번 붙여넣기 방지)
+    const remaining0 = trip.snapshot.stops.filter(s => !(trip.events[s.id] && trip.events[s.id].doneAt));
+    const kept = [];
+    let dupCount = 0;
+    specs.forEach(sp => {
+      if (isDupStop(sp.label, sp.type, kept, remaining0)) { dupCount++; return; }
+      kept.push(sp);
+    });
+    if (dupCount) toast(`⚠️ 이미 경로에 있는 ${dupCount}곳은 건너뛰었습니다 (중복 방지)`, 4000);
+    specs = kept;
+    if (!specs.length) { st(''); $('#drive-add-input').value = ''; return; }
 
     // 주소 → 좌표
     const newStops = [];

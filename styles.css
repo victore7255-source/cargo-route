@@ -515,3 +515,6 @@ input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
   font-weight: 800; font-size: 13.5px; padding: 4px 10px; border-radius: 8px; white-space: nowrap;
 }
 .pack-mode.laid { background: var(--amber-soft); color: var(--amber); }
+
+/* 운행 중 지점 빼기 버튼 (배차 취소·중복 실수용) */
+.mini-btn.remove { background: var(--red-soft); color: var(--red); }
