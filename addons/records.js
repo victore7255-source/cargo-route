@@ -93,6 +93,18 @@ const Records = (() => {
     if (log.length > LOG_MAX) log.length = LOG_MAX;
   }
 
+  /** 기록으로 넘어간 건들에 연결된 화물은 적재함에서 비운다 (배송 끝난 짐 자동 정리) */
+  function removeLinkedCargo(jobs) {
+    if (typeof cargoItems === 'undefined') return 0;
+    const ids = new Set(jobs.flatMap(j => j.cargoIds || []));
+    if (!ids.size) return 0;
+    const before = cargoItems.length;
+    cargoItems = cargoItems.filter(it => !ids.has(it.id));
+    saveItems();
+    renderCargoItems();
+    return before - cargoItems.length;
+  }
+
   /** 날짜가 지난 진행 건은 자동으로 기록으로 넘긴다 (운행 종료를 안 눌렀어도 금액 보존) */
   function rollover() {
     const today = todayIso();
@@ -100,6 +112,7 @@ const Records = (() => {
     if (!past.length) return;
     past.forEach(j => archiveJob(j, null));
     active = active.filter(j => j.date >= today);
+    removeLinkedCargo(past);
     saveAll();
   }
 
@@ -119,10 +132,15 @@ const Records = (() => {
     trips.unshift(t);
     if (trips.length > TRIPS_MAX) trips.length = TRIPS_MAX;
     const toArchive = active.splice(0);
-    toArchive.forEach(j => archiveJob(j, t.id));
+    toArchive.forEach(j => archiveJob(j, t.id));   // 화물 설명을 먼저 기록에 굳힌 뒤
+    const removed = removeLinkedCargo(toArchive);  // 적재함에서 비운다
     saveAll();
     renderJobCards();
-    if (Membership.hasPaidAccess()) toast('📒 운행과 운송료를 기록 탭에 저장했습니다', 4000);
+    if (Membership.hasPaidAccess()) {
+      toast(removed
+        ? `📒 운행·운송료를 기록했고, 배송 끝난 화물 ${removed}건을 적재함에서 비웠습니다`
+        : '📒 운행과 운송료를 기록 탭에 저장했습니다', 4500);
+    }
   }
 
   // ─────────── 합산 ───────────
