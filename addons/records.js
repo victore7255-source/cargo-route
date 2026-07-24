@@ -457,6 +457,38 @@ const Records = (() => {
   }
 
   // ─────────── app.js와의 연결 고리 (코드 수정 없이 동작) ───────────
+  // 방금(같은 붙여넣기에서) 적재함에 담긴 화물을 추적한다 — 자동 연결의 재료
+  let recentCargo = { ids: [], at: 0 };
+  function hookCargoAdd() {
+    if (typeof addCargoItems !== 'function') return;
+    const orig = addCargoItems;
+    window.addCargoItems = function (items, fromLabel) {
+      const before = new Set((cargoItems || []).map(i => i.id));
+      orig(items, fromLabel);
+      recentCargo = { ids: (cargoItems || []).filter(i => !before.has(i.id)).map(i => i.id), at: Date.now() };
+    };
+  }
+
+  // [지우고 새 배차 시작]을 누르면: 금액 입력된 건은 기록 탭에 보관하고 운송료 칸을 비운다
+  function hookNewRoute() {
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest || !e.target.closest('#btn-new-route')) return;
+      const beforeLen = (state.stops || []).length;
+      const hadResult = !!state.result;
+      setTimeout(() => {
+        const cleared = (state.stops || []).length < beforeLen || (hadResult && !state.result);
+        if (!cleared || !active.length) return;   // 확인창에서 취소했으면 그대로 둔다
+        const withFare = active.filter(j => j.fare != null);
+        withFare.forEach(j => archiveJob(j, null));
+        removeLinkedCargo(withFare);
+        active = [];
+        saveAll();
+        renderJobCards();
+        if (withFare.length) toast(`📒 입력해 둔 운송료 ${withFare.length}건은 기록 탭에 저장했습니다`, 4500);
+      }, 0);
+    }, true);
+  }
+
   function hookEndTrip() {
     // 캡처 단계는 버튼 자체 리스너(app.js)보다 먼저 실행된다.
     // 누르기 직전의 운행 상태를 복사해 두고, app.js가 확인창에서 '확인'을 받아
@@ -478,11 +510,11 @@ const Records = (() => {
       const n = (state.stops || []).length;
       if (n > lastCount && Membership.hasPaidAccess()) {
         if (!active.some(j => j.fare == null)) {
-          const newLabels = new Set((state.stops || []).slice(lastCount).map(s => s.label));
           const j = addJob(suggestLabel());
-          // 같은 문자에서 함께 인식된 화물은 손댈 것 없이 자동으로 연결한다
-          const items = (typeof cargoItems !== 'undefined' ? cargoItems : []);
-          j.cargoIds = items.filter(it => newLabels.has(it.from)).map(it => it.id);
+          // 이번 붙여넣기에서 '방금' 담긴 화물만 자동 연결한다
+          // (예전부터 적재함에 남아 있던 화물은 주소가 같아도 연결하지 않음)
+          j.cargoIds = (Date.now() - recentCargo.at < 8000) ? recentCargo.ids.slice() : [];
+          recentCargo = { ids: [], at: 0 };
           saveAll();
           toast(j.cargoIds.length
             ? '💰 운송료 칸을 만들고 실은 화물도 자동 연결했습니다 — 금액만 입력하세요'
@@ -501,6 +533,8 @@ const Records = (() => {
   renderJobCards();
   hookEndTrip();
   hookStopList();
+  hookCargoAdd();
+  hookNewRoute();
   Membership.onChange(() => { renderJobCards(); renderLog(); });
 
   return { renderLog, renderJobCards, addJob };
