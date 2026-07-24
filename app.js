@@ -247,9 +247,11 @@ async function addStopsFromInput() {
   const dates = scheduleDates(manualSched);
   const pending = [];
   let dupCount = 0;
-  lines.forEach(raw => {
-    // "상차:/하차:" 표시가 있으면 떼어내고 종류를 반영한다 (기본은 하차)
-    const { label, type } = splitLoadMarker(raw, '하차');
+  lines.forEach((raw, i) => {
+    // 표시가 없으면 배차 관례대로 '맨 위 = 상차, 나머지 = 하차'로 추정한다.
+    // (색깔 배지로 표시되고, 다르면 배지를 눌러 바꿀 수 있다. "상차:/하차:" 표시가 있으면 그 표시를 우선)
+    const defaultType = lines.length >= 2 && i === 0 ? '상차' : '하차';
+    const { label, type } = splitLoadMarker(raw, defaultType);
     if (!label) return;
     if (isDupStop(label, type, pending)) { dupCount++; return; }
     pending.push({
