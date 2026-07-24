@@ -251,7 +251,7 @@ const Records = (() => {
         <h2 class="card-title">💰 운송료 기록 ${trialNote}
           <span class="hint">(건마다 입력 → 기록 탭에 자동 합산)</span></h2>
         ${active.map(jobRowHtml).join('')}
-        <button class="btn secondary full ${active.length ? 'top8' : ''}" data-job-add>＋ 다른 배차 건 추가</button>
+        <button class="btn secondary full ${active.length ? 'top8' : ''}" data-job-add>＋ 전화로 받은 배차 추가</button>
         <div class="row space-between top8">
           <span class="hint" data-job-total>${totalLine}</span>
           <button class="mini-btn" data-goto-log>📒 기록 보기</button>
