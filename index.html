@@ -15,8 +15,8 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="styles.css?v=20260724r">
-  <link rel="stylesheet" href="addons/features.css?v=20260724r">
+  <link rel="stylesheet" href="styles.css?v=20260724s">
+  <link rel="stylesheet" href="addons/features.css?v=20260724s">
   <script>
     // 첫 화면 깜빡임 방지: 저장된 테마를 그리기 전에 적용
     (function () {
@@ -95,10 +95,12 @@
     </div>
 
     <div class="card">
-      <h2 class="card-title">배송지 <span class="hint">(한 줄에 하나씩 여러 개 붙여넣기 가능)</span></h2>
-      <textarea id="stops-input" class="input textarea" rows="3" placeholder="예)&#10;서울 강남구 테헤란로 123&#10;성남시 분당구 판교역로 235&#10;수원시 영통구"></textarea>
+      <h2 class="card-title">배송지 입력 <span class="hint">(전화로 받은 배차 · 지명도 가능)</span></h2>
+      <div class="field-label" style="margin-bottom:6px">🚚 맨 위 = <b style="color:var(--amber)">상차지</b> · 아래로 = <b style="color:var(--green)">하차지</b> (여러 곳 가능)</div>
+      <textarea id="stops-input" class="input textarea" rows="4" placeholder="상차지&#10;하차지 1&#10;하차지 2&#10;(주소·지명 모두 됩니다)"></textarea>
       <div class="row gap top8">
         <button class="btn secondary grow" id="btn-add-stops">＋ 배송지 추가</button>
+        <button class="btn secondary" id="btn-voice-stops" title="음성으로 말해서 입력">🎤 음성</button>
       </div>
       <ul class="stop-list" id="stop-list"></ul>
       <label class="field top8">
@@ -181,8 +183,11 @@
 
       <div class="card">
         <h2 class="card-title">운행 중 화물 추가 <span class="hint">(새로 잡은 배차)</span></h2>
-        <button class="btn secondary full" id="btn-paste-drive" style="margin-bottom:10px">📋 복사한 배차 문자 붙여넣기</button>
-        <textarea id="drive-add-input" class="input textarea" rows="3" placeholder="또는 여기에 직접 붙여넣거나, 주소를 한 줄에 하나씩 입력하세요.&#10;현재 위치 기준으로 남은 경로를 다시 계산합니다."></textarea>
+        <div class="row gap" style="margin-bottom:10px">
+          <button class="btn secondary grow" id="btn-paste-drive">📋 문자 붙여넣기</button>
+          <button class="btn secondary" id="btn-voice-drive" title="음성으로 말해서 입력">🎤 음성</button>
+        </div>
+        <textarea id="drive-add-input" class="input textarea" rows="3" placeholder="운전 중이면 🎤 음성으로 말하세요.&#10;맨 위=상차지, 아래로=하차지 (지명도 됩니다)"></textarea>
         <button class="btn secondary full top8" id="btn-drive-add">🔄 추가하고 남은 경로 다시 계산</button>
         <div id="drive-add-status" class="geo-status"></div>
       </div>
@@ -255,13 +260,13 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="geo.js?v=20260724r"></script>
-<script src="sms.js?v=20260724r"></script>
-<script src="route.js?v=20260724r"></script>
-<script src="app.js?v=20260724r"></script>
-<script src="addons/membership.js?v=20260724r"></script>
-<script src="addons/stations.js?v=20260724r"></script>
-<script src="addons/records.js?v=20260724r"></script>
-<script src="addons/paidmap.js?v=20260724r"></script>
+<script src="geo.js?v=20260724s"></script>
+<script src="sms.js?v=20260724s"></script>
+<script src="route.js?v=20260724s"></script>
+<script src="app.js?v=20260724s"></script>
+<script src="addons/membership.js?v=20260724s"></script>
+<script src="addons/stations.js?v=20260724s"></script>
+<script src="addons/records.js?v=20260724s"></script>
+<script src="addons/paidmap.js?v=20260724s"></script>
 </body>
 </html>

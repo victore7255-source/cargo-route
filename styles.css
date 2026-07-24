@@ -530,3 +530,6 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; }
   animation: pastePulse 1s ease-in-out infinite;
 }
 @keyframes pastePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+
+/* 음성 입력 '듣는 중' 상태 (빨간 펄스) */
+.btn.listening { background: var(--red-soft); color: var(--red); animation: pastePulse 1s ease-in-out infinite; }

@@ -329,6 +329,64 @@ $('#btn-paste-drive').addEventListener('click', async () => {
   if (await pasteClipboard('#drive-add-input', $('#btn-paste-drive'))) $('#btn-drive-add').click();
 });
 
+// ─────────── 음성 입력 (운전 중 손 안 쓰고 주소 말하기) ───────────
+// 브라우저 음성인식(Web Speech API) 사용. 안드로이드 크롬은 잘 되고,
+// 아이폰은 지원이 불안정해서 안 되면 '키보드 마이크'를 안내한다.
+// 여러 주소는 한 줄에 하나씩 — 주소 하나 말하고 잠깐 쉬면 다음 줄로 넘어간다.
+function startVoiceInput(targetSel, btn) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const ta = $(targetSel);
+  if (!SR) {
+    toast('이 폰은 앱 음성입력이 안 됩니다. 입력칸을 누르고 키보드의 🎤(마이크)를 눌러 말하면 똑같이 됩니다.', 6000);
+    ta.focus();
+    return;
+  }
+  const label = btn.textContent;
+  let rec;
+  try { rec = new SR(); } catch (e) {
+    toast('음성입력을 시작할 수 없습니다. 키보드의 🎤(마이크)를 이용해 주세요.', 5000);
+    return;
+  }
+  rec.lang = 'ko-KR';
+  rec.interimResults = true;
+  rec.continuous = true;
+  let base = ta.value ? ta.value.replace(/\s+$/, '') + '\n' : '';
+  let finalText = base;
+
+  btn.classList.add('listening');
+  btn.textContent = '🔴 듣는 중 (누르면 끝)';
+  btn.onclick = () => { try { rec.stop(); } catch (e) { /* ignore */ } };
+
+  rec.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalText += t.trim() + '\n';   // 한 마디 끝나면 한 줄
+      else interim += t;
+    }
+    ta.value = (finalText + interim).replace(/\n+/g, '\n').trimStart();
+  };
+  rec.onerror = (e) => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      toast('마이크 권한이 필요합니다. 브라우저 설정에서 마이크를 허용하거나, 키보드의 🎤를 이용하세요.', 6000);
+    } else if (e.error !== 'aborted' && e.error !== 'no-speech') {
+      toast('음성 인식 오류(' + e.error + '). 키보드의 🎤로도 입력할 수 있어요.', 5000);
+    }
+  };
+  rec.onend = () => {
+    ta.value = finalText.replace(/\n+/g, '\n').trim();
+    btn.classList.remove('listening');
+    btn.textContent = label;
+    btn.onclick = () => startVoiceInput(targetSel, btn);
+    if (ta.value !== base.trim() && ta.value) toast('🎤 말한 내용을 확인하고 [추가]를 눌러주세요. 틀린 곳은 직접 고칠 수 있어요.', 4500);
+  };
+  try { rec.start(); } catch (e) { rec.onend(); }
+}
+const voiceStops = $('#btn-voice-stops');
+if (voiceStops) voiceStops.onclick = () => startVoiceInput('#stops-input', voiceStops);
+const voiceDrive = $('#btn-voice-drive');
+if (voiceDrive) voiceDrive.onclick = () => startVoiceInput('#drive-add-input', voiceDrive);
+
 // ─────────── 문자 붙여넣기 ───────────
 let smsParsed = [];
 let smsMeta = { schedule: null, items: [] };
