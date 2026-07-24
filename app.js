@@ -203,6 +203,18 @@ $('#btn-new-route').addEventListener('click', () => {
 function normLabel(s) {
   return String(s || '').replace(/(상차지|하차지|상차|하차)\s*$/, '').replace(/\s+/g, '');
 }
+/** "상차: 송파 법원", "하차 인천 단봉초등학교" 같은 줄에서 상/하차 표시를 떼고 종류를 알아낸다.
+ *  (표시가 앞·뒤 어디 있든 떼어내 지오코딩이 깨끗한 지명·주소만 검색하게 한다) */
+function splitLoadMarker(raw, defaultType) {
+  let type = defaultType || null;
+  let label = String(raw || '').trim();
+  const set = m => { type = /상차|싣|발지/.test(m) ? '상차' : '하차'; };
+  let m = label.match(/^(상차지|하차지|상차|하차|싣는곳|내리는곳|착지|발지)\s*[:：)\].\-]?\s*/);
+  if (m) { set(m[1]); label = label.slice(m[0].length).trim(); }
+  m = label.match(/[\s(\[]*(상차지|하차지|상차|하차)\s*$/);
+  if (m) { set(m[1]); label = label.slice(0, m.index).trim(); }
+  return { label, type: type || '하차' };
+}
 function isDupStop(label, type, batch, pool) {
   const n = normLabel(label);
   const base = pool || state.stops.filter(s => !isFutureStop(s));
@@ -214,9 +226,13 @@ async function addStopsFromInput() {
   const lines = raw.split('\n').map(s => s.trim()).filter(Boolean);
   if (!lines.length) { toast('주소를 입력해 주세요'); return; }
 
-  // 배차 문자를 통째로 붙여넣은 것 같으면 (주소가 아닌 줄이 여럿) 문자 자동 인식으로 넘긴다
-  const nonAddr = lines.filter(l => !SmsParser.looksLikeAddress(l));
-  if (nonAddr.length >= 2 || (nonAddr.length >= 1 && lines.length >= 4)) {
+  // 배차 문자를 통째로 붙여넣은 것 같으면 문자 자동 인식으로 넘긴다.
+  // 단, "상차:/하차:" 표시가 붙은 줄은 명시적 목적지로 보고, 지명·건물명 몇 줄만
+  // 붙여넣은 경우는 그대로 배송지로 추가한다 (연락처가 있거나 긴 메시지일 때만 전환).
+  const explicitStop = l => /^(상차|하차|상차지|하차지)\s*[:：]/.test(l.trim());
+  const nonAddr = lines.filter(l => !explicitStop(l) && !SmsParser.looksLikeAddress(l));
+  const hasPhone = /\d{2,3}[-\s]?\d{3,4}[-\s]?\d{4}/.test(raw);
+  if ((hasPhone && nonAddr.length >= 1) || (nonAddr.length >= 2 && lines.length >= 5)) {
     $('#stops-input').value = '';
     $('#sms-input').value = raw;
     $('#btn-parse-sms').click();
@@ -231,11 +247,14 @@ async function addStopsFromInput() {
   const dates = scheduleDates(manualSched);
   const pending = [];
   let dupCount = 0;
-  lines.forEach(label => {
-    if (isDupStop(label, '하차', pending)) { dupCount++; return; }
+  lines.forEach(raw => {
+    // "상차:/하차:" 표시가 있으면 떼어내고 종류를 반영한다 (기본은 하차)
+    const { label, type } = splitLoadMarker(raw, '하차');
+    if (!label) return;
+    if (isDupStop(label, type, pending)) { dupCount++; return; }
     pending.push({
-      id: uid(), label, lat: null, lng: null, type: '하차', workMin: defaultWork, status: 'pending',
-      schedule: manualSched || '', visitDate: dates.unload,
+      id: uid(), label, lat: null, lng: null, type, workMin: defaultWork, status: 'pending',
+      schedule: manualSched || '', visitDate: type === '상차' ? dates.load : dates.unload,
     });
   });
   if (dupCount) toast(`⚠️ 이미 있는 배송지 ${dupCount}곳은 건너뛰었습니다 (중복 방지)`, 4000);
@@ -1137,10 +1156,11 @@ async function driveAddStops() {
       }));
     } else {
       const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
-      specs = lines.map((label, i) => ({
-        label, type: lines.length >= 2 && i === 0 ? '상차' : '하차',
-        phone: '', contactName: '', cargo: '', podPhone: '', notes: [], schedule: '',
-      }));
+      specs = lines.map((raw, i) => {
+        // "상차:/하차:" 표시를 떼어내고 종류를 알아낸다 (표시 없으면 첫 줄=상차, 나머지=하차)
+        const { label, type } = splitLoadMarker(raw, lines.length >= 2 && i === 0 ? '상차' : '하차');
+        return { label, type, phone: '', contactName: '', cargo: '', podPhone: '', notes: [], schedule: '' };
+      }).filter(s => s.label);
     }
 
     // 아직 안 간 지점과 같은 주소·상하차는 건너뛴다 (같은 문자 두 번 붙여넣기 방지)
