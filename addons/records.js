@@ -184,17 +184,18 @@ const Records = (() => {
     const items = (typeof cargoItems !== 'undefined' ? cargoItems : []);
     const open = openCargo.has(j.id);
     const cargoBtnLabel = (j.cargoIds || []).length
-      ? `📦 실은 화물 ${j.cargoIds.length}종 연결됨`
-      : '📦 적재함 화물 연결 (선택)';
+      ? `📦 실은 화물 ${j.cargoIds.length}종 연결됨 ✓`
+      : '📦 실은 화물 연결 (선택사항 — 안 해도 됨)';
     const selector = !open ? '' : `
       <div class="cargo-select">
+        <p class="hint" style="margin-bottom:4px">이 배차에 실은 짐만 체크하세요 (체크하면 바로 저장됩니다)</p>
         ${items.length ? items.map(it => `
           <label class="cargo-opt">
             <input type="checkbox" data-job="${j.id}" data-cid="${it.id}" ${(j.cargoIds || []).includes(it.id) ? 'checked' : ''}>
             <span>${esc(itemLabel(it))}${it.from ? ` <span class="hint">(${esc(it.from)})</span>` : ''}</span>
           </label>`).join('')
           : '<p class="hint">적재 탭에 담긴 화물이 없습니다.</p>'}
-        <p class="fine-print">여러 개 선택할 수 있습니다. 적재함에 입력 안 한 짐(작은 짐·바로 싣고 가는 짐)은 연결 없이 그냥 두세요.</p>
+        <button class="btn secondary full" data-cargo-done="${j.id}" style="margin-top:6px">✓ 완료 (접기)</button>
       </div>`;
     return `
       <div class="job-row">
@@ -232,7 +233,7 @@ const Records = (() => {
         <h2 class="card-title">💰 운송료 기록 ${trialNote}
           <span class="hint">(건마다 입력 → 기록 탭에 자동 합산)</span></h2>
         ${active.map(jobRowHtml).join('')}
-        <button class="btn secondary full ${active.length ? 'top8' : ''}" data-job-add>＋ 운행 건 추가</button>
+        <button class="btn secondary full ${active.length ? 'top8' : ''}" data-job-add>＋ 다른 배차 건 추가</button>
         <div class="row space-between top8">
           <span class="hint" data-job-total>${totalLine}</span>
           <button class="mini-btn" data-goto-log>📒 기록 보기</button>
@@ -244,9 +245,13 @@ const Records = (() => {
     root.querySelectorAll('[data-lock]').forEach(b =>
       b.addEventListener('click', () => Membership.showUpsell(b.dataset.lock)));
     root.querySelectorAll('[data-job-add]').forEach(b => b.addEventListener('click', () => {
-      const label = prompt('이 운행 건의 이름을 입력하세요 (어디 → 어디)', suggestLabel());
-      if (label == null) return;
-      addJob(label.trim() || suggestLabel());
+      // 이름은 자동으로 붙는다 (🚚 이름 줄을 누르면 언제든 수정 가능) — 입력창 없이 바로 생성
+      addJob(suggestLabel());
+      renderJobCards();
+      toast('🚚 배차 건을 추가했습니다 — 금액만 입력하세요 (이름은 🚚 줄을 눌러 수정)', 4000);
+    }));
+    root.querySelectorAll('[data-cargo-done]').forEach(b => b.addEventListener('click', () => {
+      openCargo.delete(b.dataset.cargoDone);
       renderJobCards();
     }));
     root.querySelectorAll('[data-goto-log]').forEach(b => b.addEventListener('click', () => {
@@ -292,6 +297,7 @@ const Records = (() => {
       if (ch.checked) { if (!j.cargoIds.includes(ch.dataset.cid)) j.cargoIds.push(ch.dataset.cid); }
       else j.cargoIds = j.cargoIds.filter(c => c !== ch.dataset.cid);
       saveAll();
+      renderJobCards();   // 선택 개수·연결 표시를 바로 갱신 (선택창은 열린 채 유지)
     }));
   }
 
@@ -454,8 +460,15 @@ const Records = (() => {
       const n = (state.stops || []).length;
       if (n > lastCount && Membership.hasPaidAccess()) {
         if (!active.some(j => j.fare == null)) {
-          addJob(suggestLabel());
-          toast('💰 운송료 칸을 만들었습니다 — 금액을 입력하면 기록 탭에 자동 합산됩니다', 4500);
+          const newLabels = new Set((state.stops || []).slice(lastCount).map(s => s.label));
+          const j = addJob(suggestLabel());
+          // 같은 문자에서 함께 인식된 화물은 손댈 것 없이 자동으로 연결한다
+          const items = (typeof cargoItems !== 'undefined' ? cargoItems : []);
+          j.cargoIds = items.filter(it => newLabels.has(it.from)).map(it => it.id);
+          saveAll();
+          toast(j.cargoIds.length
+            ? '💰 운송료 칸을 만들고 실은 화물도 자동 연결했습니다 — 금액만 입력하세요'
+            : '💰 운송료 칸을 만들었습니다 — 금액을 입력하면 기록 탭에 자동 합산됩니다', 4500);
         }
         renderJobCards();
       }
