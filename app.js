@@ -186,7 +186,7 @@ $('#btn-new-route').addEventListener('click', () => {
   state.result = null;
   state.client = { phone: '', name: '' };
   $('#result-area').classList.add('hidden');
-  $('#sms-input').value = '';
+  $('#sms-input').value = ''; $('#sms-input').dispatchEvent(new Event('input'));
   $('#stops-input').value = '';
   $('#client-phone').value = '';
   $('#sms-preview').classList.add('hidden');
@@ -322,12 +322,39 @@ async function pasteClipboard(sel, anchorBtn) {
     if (hint) hint.remove();
   }
 }
-$('#btn-paste-sms').addEventListener('click', async () => {
-  if (await pasteClipboard('#sms-input', $('#btn-paste-sms'))) $('#btn-parse-sms').click();
-});
-$('#btn-paste-drive').addEventListener('click', async () => {
-  if (await pasteClipboard('#drive-add-input', $('#btn-paste-drive'))) $('#btn-drive-add').click();
-});
+// 붙여넣기 버튼은 문자칸이 비어 있으면 '붙여넣기', 문자가 있으면 '🗑 문자 지우기'로 바뀐다.
+// (긴 문자를 한 번에 지울 수 있게 — 프로그램이 자동으로 비워도 라벨이 따라온다)
+function setupPasteClearToggle(btn, taSel, pasteLabel, afterPaste, onClear) {
+  const ta = $(taSel);
+  const refresh = () => {
+    const has = ta.value.trim().length > 0;
+    btn.textContent = has ? '🗑 문자 지우기' : pasteLabel;
+    btn.classList.toggle('clear-mode', has);
+  };
+  btn.addEventListener('click', async () => {
+    if (ta.value.trim().length > 0) {         // 문자가 있으면 = 지우기
+      ta.value = '';
+      if (onClear) onClear();
+      refresh();
+      ta.focus();
+      return;
+    }
+    if (await pasteClipboard(taSel, btn)) {    // 비어 있으면 = 붙여넣기
+      refresh();
+      if (afterPaste) afterPaste();
+    } else {
+      refresh();
+    }
+  });
+  ta.addEventListener('input', refresh);
+  refresh();
+}
+setupPasteClearToggle($('#btn-paste-sms'), '#sms-input', '📋 복사한 배차 문자 붙여넣기',
+  () => $('#btn-parse-sms').click(),
+  () => { $('#sms-preview').classList.add('hidden'); smsParsed = []; });
+setupPasteClearToggle($('#btn-paste-drive'), '#drive-add-input', '📋 문자 붙여넣기',
+  () => $('#btn-drive-add').click(),
+  () => { const el = $('#drive-add-status'); if (el) el.textContent = ''; });
 
 // ─────────── 음성 입력 (운전 중 손 안 쓰고 주소 말하기) ───────────
 // 브라우저 음성인식(Web Speech API) 사용. 안드로이드 크롬은 잘 되고,
@@ -517,7 +544,7 @@ async function addSmsStops() {
   if (!pending.length) {
     smsParsed = [];
     smsMeta = { schedule: null, items: [], client: null };
-    $('#sms-input').value = '';
+    $('#sms-input').value = ''; $('#sms-input').dispatchEvent(new Event('input'));
     $('#sms-preview').classList.add('hidden');
     return;
   }
@@ -531,7 +558,7 @@ async function addSmsStops() {
   }
   smsParsed = [];
   smsMeta = { schedule: null, items: [], client: null };
-  $('#sms-input').value = '';
+  $('#sms-input').value = ''; $('#sms-input').dispatchEvent(new Event('input'));
   $('#sms-preview').classList.add('hidden');
   resetSchedPicker();
   state.stops.push(...pending);
@@ -1233,7 +1260,7 @@ async function driveAddStops() {
     });
     if (dupCount) toast(`⚠️ 이미 경로에 있는 ${dupCount}곳은 건너뛰었습니다 (중복 방지)`, 4000);
     specs = kept;
-    if (!specs.length) { st(''); $('#drive-add-input').value = ''; return; }
+    if (!specs.length) { st(''); $('#drive-add-input').value = ''; $('#drive-add-input').dispatchEvent(new Event('input')); return; }
 
     // 주소 → 좌표
     const newStops = [];
@@ -1254,7 +1281,7 @@ async function driveAddStops() {
     if (!todayNew.length) {
       state.stops.push(...newStops.map(s => ({ ...s })));
       if (full.items && full.items.length) addCargoItems(full.items, newStops[0].label);
-      $('#drive-add-input').value = '';
+      $('#drive-add-input').value = ''; $('#drive-add-input').dispatchEvent(new Event('input'));
       st('');
       saveState(); renderStops();
       toast(`📅 ${futureNew.length}곳 모두 내일 이후 방문 — 경로 탭 예정 목록에 담아두었습니다`, 5000);
@@ -1297,7 +1324,7 @@ async function driveAddStops() {
       addCargoItems(full.items, newStops[0].label);
     }
 
-    $('#drive-add-input').value = '';
+    $('#drive-add-input').value = ''; $('#drive-add-input').dispatchEvent(new Event('input'));
     st(res.approx ? '⚠️ 경로 서버 연결이 원활하지 않아 직선거리 기반 추정치입니다.' : '');
     saveState();
     renderStops();

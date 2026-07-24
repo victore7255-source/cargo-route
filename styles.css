@@ -533,3 +533,6 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: left; }
 
 /* 음성 입력 '듣는 중' 상태 (빨간 펄스) */
 .btn.listening { background: var(--red-soft); color: var(--red); animation: pastePulse 1s ease-in-out infinite; }
+
+/* 붙여넣기 버튼이 '문자 지우기'로 바뀔 때 (문자가 들어 있는 상태) */
+.btn.clear-mode { background: var(--red-soft); color: var(--red); box-shadow: none; }
