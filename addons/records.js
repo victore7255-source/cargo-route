@@ -203,7 +203,7 @@ const Records = (() => {
     const open = openCargo.has(j.id);
     const cargoBtnLabel = (j.cargoIds || []).length
       ? `📦 실은 화물 ${j.cargoIds.length}종 연결됨 ✓`
-      : '📦 실은 화물 연결 (선택사항 — 안 해도 됨)';
+      : '📦 실은 화물 연결 (선택)';
     const selector = !open ? '' : `
       <div class="cargo-select">
         <p class="hint" style="margin-bottom:4px">이 배차에 실은 짐만 체크하세요 (체크하면 바로 저장됩니다)</p>
@@ -222,7 +222,7 @@ const Records = (() => {
           <button class="icon-btn" data-job-del="${j.id}" title="이 건 삭제">✕</button>
         </div>
         <div class="money-wrap top8">
-          <input type="text" class="input money" inputmode="numeric" placeholder="운송료 입력 — 예) 70000 또는 7만"
+          <input type="text" class="input money" inputmode="numeric" placeholder="예) 70000 또는 7만"
                  data-job-fare="${j.id}" value="${j.fare != null ? j.fare : ''}">
           <span class="money-suffix">원</span>
         </div>

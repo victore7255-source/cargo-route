@@ -180,15 +180,17 @@ h1 { font-size: 19px; font-weight: 800; letter-spacing: -0.03em; color: var(--in
 .textarea { resize: vertical; min-height: 76px; }
 select.input { appearance: none; }
 
-/* iOS가 시간 입력칸을 자체 크기로 그려 select와 높이가 어긋나는 것 방지 */
-input[type="time"].input, select.input {
+/* iOS가 시간·날짜 입력칸을 자체 크기로 그려 칸이 어긋나거나 옆으로 넘치는 것 방지 */
+input[type="time"].input, input[type="date"].input, select.input {
   -webkit-appearance: none;
   appearance: none;
   height: 47px;
   padding-top: 0;
   padding-bottom: 0;
+  min-width: 0;   /* grid 칸 안에서 줄어들 수 있게 (날짜칸 가로 넘침 방지) */
 }
-input[type="time"].input::-webkit-date-and-time-value { text-align: left; }
+input[type="time"].input::-webkit-date-and-time-value,
+input[type="date"].input::-webkit-date-and-time-value { text-align: left; }
 
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .field-label { font-size: 13.5px; color: var(--ink-dim); font-weight: 700; letter-spacing: -0.01em; }
