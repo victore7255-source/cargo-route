@@ -15,9 +15,23 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="styles.css?v=20260724u">
-  <link rel="stylesheet" href="addons/features.css?v=20260724u">
+  <link rel="stylesheet" href="styles.css?v=20260724v">
+  <link rel="stylesheet" href="addons/features.css?v=20260724v">
   <script>
+    // 새 버전 자동 반영: version.txt(캐시 우회)를 확인해 다르면 새 주소로 다시 불러온다.
+    // 폰 브라우저가 옛 화면을 캐시해서 "업데이트가 안 보이는" 문제를 막는다.
+    (function () {
+      var BUILD = '20260724v';
+      try {
+        if (new URLSearchParams(location.search).get('_r')) return; // 이미 새로고침함 (무한루프 방지)
+        fetch('version.txt?_=' + Date.now(), { cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.text() : ''; })
+          .then(function (t) {
+            t = (t || '').trim();
+            if (t && t !== BUILD) location.replace(location.pathname + '?_r=' + t);
+          }).catch(function () {});
+      } catch (e) { /* 오프라인 등 — 무시 */ }
+    })();
     // 첫 화면 깜빡임 방지: 저장된 테마를 그리기 전에 적용
     (function () {
       var t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('cargo-theme');
@@ -260,13 +274,13 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="geo.js?v=20260724u"></script>
-<script src="sms.js?v=20260724u"></script>
-<script src="route.js?v=20260724u"></script>
-<script src="app.js?v=20260724u"></script>
-<script src="addons/membership.js?v=20260724u"></script>
-<script src="addons/stations.js?v=20260724u"></script>
-<script src="addons/records.js?v=20260724u"></script>
-<script src="addons/paidmap.js?v=20260724u"></script>
+<script src="geo.js?v=20260724v"></script>
+<script src="sms.js?v=20260724v"></script>
+<script src="route.js?v=20260724v"></script>
+<script src="app.js?v=20260724v"></script>
+<script src="addons/membership.js?v=20260724v"></script>
+<script src="addons/stations.js?v=20260724v"></script>
+<script src="addons/records.js?v=20260724v"></script>
+<script src="addons/paidmap.js?v=20260724v"></script>
 </body>
 </html>
