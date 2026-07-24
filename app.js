@@ -458,9 +458,39 @@ $('#btn-parse-sms').addEventListener('click', () => {
 });
 
 // 화주/포워딩 번호 직접 입력·수정
-$('#client-phone').addEventListener('input', () => {
-  state.client = { phone: $('#client-phone').value.trim(), name: (state.client && state.client.name) || '' };
+// 전화번호 자동 하이픈: 숫자만 치면 010-1234-5678 꼴로 만든다 (지역번호·10자리도 대응)
+function formatKoreanPhone(v) {
+  let d = String(v || '').replace(/[^0-9]/g, '').slice(0, 11);
+  if (d.startsWith('02')) {                       // 서울 지역번호
+    if (d.length <= 2) return d;
+    if (d.length <= 5) return d.slice(0, 2) + '-' + d.slice(2);
+    if (d.length <= 9) return d.slice(0, 2) + '-' + d.slice(2, 5) + '-' + d.slice(5);
+    return d.slice(0, 2) + '-' + d.slice(2, 6) + '-' + d.slice(6, 10);
+  }
+  if (d.length <= 3) return d;                     // 010, 031, 070 ...
+  if (d.length <= 7) return d.slice(0, 3) + '-' + d.slice(3);
+  if (d.length <= 10) return d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6);  // 10자리 3-3-4
+  return d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7);                       // 11자리 3-4-4
+}
+function phoneDigits(v) { return String(v || '').replace(/[^0-9]/g, ''); }
+
+const clientPhoneEl = $('#client-phone');
+clientPhoneEl.addEventListener('input', () => {
+  clientPhoneEl.value = formatKoreanPhone(clientPhoneEl.value);
+  state.client = { phone: clientPhoneEl.value.trim(), name: (state.client && state.client.name) || '' };
   saveState();
+});
+// 탭하면 '010-'을 미리 넣어 뒤 8자리만 치면 되게 한다
+clientPhoneEl.addEventListener('focus', () => {
+  if (!phoneDigits(clientPhoneEl.value)) clientPhoneEl.value = '010-';
+});
+// '010'만 넣고 더 안 치고 나가면 흔적을 지워 예시 문구가 다시 보이게 한다
+clientPhoneEl.addEventListener('blur', () => {
+  if (phoneDigits(clientPhoneEl.value).length < 4) {
+    clientPhoneEl.value = '';
+    state.client = { phone: '', name: (state.client && state.client.name) || '' };
+    saveState();
+  }
 });
 
 function itemLabel(it) {
@@ -1099,10 +1129,13 @@ function stopPhones(stop) {
   if (stop.phones && stop.phones.length) return stop.phones;
   return stop.phone ? [stop.phone] : [];
 }
-/** 화주/포워딩(완료 보고 대상) 번호 — 운행 중이면 스냅샷, 아니면 현재 state */
+/** 화주/포워딩(완료 보고 대상) 번호 — 운행 중이면 스냅샷, 아니면 현재 state.
+ *  '010-'처럼 덜 입력된 번호(9자리 미만)는 완료 보고 대상이 아니므로 빈 값으로 본다. */
 function clientPhone() {
-  if (state.trip && state.trip.snapshot && state.trip.snapshot.client) return state.trip.snapshot.client.phone || '';
-  return (state.client && state.client.phone) || '';
+  const p = (state.trip && state.trip.snapshot && state.trip.snapshot.client)
+    ? (state.trip.snapshot.client.phone || '')
+    : ((state.client && state.client.phone) || '');
+  return p.replace(/[^0-9]/g, '').length >= 9 ? p : '';
 }
 
 function renderDriveChecklist() {
