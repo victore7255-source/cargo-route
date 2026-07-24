@@ -359,6 +359,18 @@ const Records = (() => {
     const missing = entries.filter(e => e.fare == null).length;
     const kmSum = rangeTrips.reduce((s, t) => s + (t.distance || 0), 0);
 
+    // 이 기간에 기록이 없을 때: 전체 보관 기록을 알려줘 "사라진 게 아님"을 분명히 한다
+    const allSaved = [...active, ...log];
+    const emptyHtml = allSaved.length
+      ? `<div class="center-card"><p class="big-emoji">📭</p>
+           <p style="font-weight:800">이 기간(${fmtDateK(from)}~${fmtDateK(to)})에는 기록이 없습니다.</p>
+           <div class="lock-saved" style="max-width:320px">전체 기록 <b>${allSaved.length}건 · ${won(sumFare(allSaved))}</b><br><span class="hint">안전하게 보관돼 있어요 — 다른 날짜에 있습니다</span></div>
+           <div class="row gap top8" style="justify-content:center">
+             <button class="chip" data-period="today">오늘 보기</button>
+             <button class="chip" data-period="month">이번 달 보기</button>
+           </div></div>`
+      : `<div class="center-card"><p class="big-emoji">📭</p><p>아직 기록이 없습니다.</p><p class="hint">경로 탭에서 배송지를 입력하고 운송료를 적으면 여기에 쌓입니다.</p></div>`;
+
     const trialBanner = !Membership.isPaid() && Membership.trialDaysLeft() > 0 ? `
       <div class="trial-banner">
         <span>🎁 무료 체험 <b>D-${Membership.trialDaysLeft()}</b> — 체험이 끝나면 기록이 잠깁니다 (기록은 보존)</span>
@@ -422,7 +434,7 @@ const Records = (() => {
         ${missing ? `<p class="fine-print">⚠️ 금액 미입력 ${missing}건 — 아래 목록에서 [금액 미입력]을 눌러 채워주세요. (합계에는 0원으로 계산)</p>` : ''}
       </div>
       <div class="card">
-        ${listHtml || '<div class="center-card"><p class="big-emoji">📭</p><p>이 기간에는 기록이 없습니다.</p><p class="hint">경로 탭에서 배송지를 입력하면 운송료 칸이 자동으로 생깁니다.</p></div>'}
+        ${listHtml || emptyHtml}
         <p class="fine-print top8">기록은 이 휴대폰에 저장됩니다. 서버 백업·기기 간 동기화는 준비 중입니다.</p>
       </div>`;
 
